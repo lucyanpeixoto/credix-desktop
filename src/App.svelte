@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import CashModal from './lib/components/CashModal.svelte'
+  import ConnectionBadge from './lib/components/ConnectionBadge.svelte'
   import { modalStack } from './lib/components/modalStack'
+  import { fmt } from './lib/money'
   import SettingsModal from './lib/components/SettingsModal.svelte'
   import { printerReady } from './lib/printer'
   import Lock from './lib/screens/Lock.svelte'
+  import OpenCash from './lib/screens/OpenCash.svelte'
   import Pair from './lib/screens/Pair.svelte'
   import ReceiveScreen from './lib/screens/ReceiveScreen.svelte'
   import SaleScreen from './lib/screens/SaleScreen.svelte'
@@ -13,12 +17,15 @@
 
   let tab = $state<'sale' | 'receive'>('sale')
   let settingsOpen = $state(false)
-  let online = $state(navigator.onLine)
+  let cashOpen = $state(false)
 
   onMount(() => {
     session.refresh()
-    const up = () => (online = true)
-    const down = () => (online = false)
+    session.ping()
+    // Confere a conexão com o servidor a cada 20 s e quando a rede muda.
+    const ping = setInterval(() => session.ping(), 20_000)
+    const up = () => session.ping()
+    const down = () => session.ping()
     addEventListener('online', up)
     addEventListener('offline', down)
 
@@ -29,6 +36,7 @@
     }, 10_000)
 
     return () => {
+      clearInterval(ping)
       clearInterval(idle)
       removeEventListener('online', up)
       removeEventListener('offline', down)
@@ -37,6 +45,7 @@
 
   function lockNow() {
     settingsOpen = false
+    cashOpen = false
     tab = 'sale'
     session.lock()
   }
@@ -87,8 +96,11 @@
         <button class:on={tab === 'receive'} onclick={() => (tab = 'receive')}>Receber <kbd>F2</kbd></button>
       </nav>
       <span class="spacer"></span>
-      {#if !online}
-        <span class="pill bad"><Icon name="wifiOff" size={14} /> Sem internet</span>
+      <ConnectionBadge />
+      {#if session.cash?.session}
+        <button class="drawer" onclick={() => (cashOpen = true)} title="Caixa: sangria, suprimento e fechamento">
+          <Icon name="cash" size={16} /> Gaveta {fmt(session.cash.session.summary.expected_cash)}
+        </button>
       {/if}
       {#if printerReady(session.settings)}
         <span class="pill good"><Icon name="printer" size={14} /> Impressora</span>
@@ -103,9 +115,16 @@
       <button class="icon" onclick={() => (settingsOpen = true)} aria-label="Configurações (F12)"><Icon name="gear" /></button>
     </header>
     <main>
+      {#if session.needsCashOpen}
+        <OpenCash />
+      {/if}
       {#key session.seller.id}
-        <div class="tab" class:hidden={tab !== 'sale'}><SaleScreen active={tab === 'sale' && !settingsOpen} /></div>
-        <div class="tab" class:hidden={tab !== 'receive'}><ReceiveScreen active={tab === 'receive' && !settingsOpen} /></div>
+        <div class="tab" class:hidden={tab !== 'sale' || session.needsCashOpen}>
+          <SaleScreen active={tab === 'sale' && !settingsOpen && !cashOpen && !session.needsCashOpen} />
+        </div>
+        <div class="tab" class:hidden={tab !== 'receive' || session.needsCashOpen}>
+          <ReceiveScreen active={tab === 'receive' && !settingsOpen && !cashOpen && !session.needsCashOpen} />
+        </div>
       {/key}
     </main>
   </div>
@@ -113,6 +132,10 @@
 
 {#if settingsOpen}
   <SettingsModal onclose={() => (settingsOpen = false)} />
+{/if}
+
+{#if cashOpen && session.seller}
+  <CashModal onclose={() => (cashOpen = false)} />
 {/if}
 
 <style>
@@ -186,9 +209,19 @@
     background: #d1fae5;
     color: var(--ok);
   }
-  .pill.bad {
-    background: var(--danger-bg);
-    color: var(--danger);
+  .drawer {
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--ok-bg);
+    border-color: #a7f3d0;
+    color: var(--ok);
+  }
+  .drawer:hover:not(:disabled) {
+    background: #d1fae5;
+    border-color: #6ee7b7;
   }
   .me {
     height: 40px;

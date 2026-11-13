@@ -222,6 +222,7 @@
   async function finished(sale: Sale, cashTendered: number | undefined) {
     done = { sale, cashTendered }
     modal = 'done'
+    session.loadCash()
     reset()
     loadProducts()
     const cashIn = sale.payment_type === 'dinheiro' || (sale.installments ?? []).some((i) => i.status === 'paid')

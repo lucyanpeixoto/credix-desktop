@@ -9,6 +9,7 @@ export interface Company {
   logo_url: string | null
   pix_online: boolean
   late_charges: boolean
+  cash_control: boolean
 }
 
 export interface Seller {
@@ -25,6 +26,52 @@ export interface TerminalInfo {
   terminal: { id: string; name: string; lock_minutes: number }
   company: Company
   sellers: Seller[]
+}
+
+export interface CashMethod {
+  type: string
+  label: string
+  count: number
+  total: number
+}
+
+export interface CashSummary {
+  opening: number
+  methods: CashMethod[]
+  total_in: number
+  crediario_sold: number
+  sangria: number
+  suprimento: number
+  expected_cash: number
+}
+
+export interface CashMovement {
+  id: string
+  type: 'sangria' | 'suprimento'
+  amount: number
+  reason: string | null
+  user: string | null
+  created_at: string
+}
+
+export interface CashSession {
+  id: string
+  status: 'open' | 'closed'
+  opened_at: string
+  opened_by: string | null
+  closed_at: string | null
+  closed_by: string | null
+  counted_cash: number | null
+  difference: number | null
+  notes: string | null
+  summary: CashSummary
+  movements: CashMovement[]
+}
+
+export interface CashState {
+  enabled: boolean
+  session: CashSession | null
+  last_closed: { closed_at: string; counted_cash: number; closed_by: string | null } | null
 }
 
 export interface Category {
@@ -157,6 +204,8 @@ export class Api {
     private creds: () => Credentials,
     private onUnpaired?: () => void,
     private onSellerRejected?: () => void,
+    private onNetwork?: (ok: boolean) => void,
+    private onCashClosed?: () => void,
   ) {}
 
   private url(path: string, query?: Record<string, unknown>): string {
@@ -191,8 +240,10 @@ export class Api {
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       })
     } catch {
+      this.onNetwork?.(false)
       throw new ApiError('Sem conexão com o servidor. Confira a internet e tente de novo.', 0)
     }
+    this.onNetwork?.(true)
 
     const data = await res.json().catch(() => null)
     if (res.ok) return data as T
@@ -200,6 +251,7 @@ export class Api {
     const code: string | null = data?.code ?? null
     if (res.status === 401 && code === 'terminal_unpaired') this.onUnpaired?.()
     else if (res.status === 401 && code === 'seller_locked' && opts.seller !== false) this.onSellerRejected?.()
+    else if (res.status === 409 && code === 'cash_closed') this.onCashClosed?.()
 
     const errors: Record<string, string[]> = data?.errors ?? {}
     const first = Object.values(errors)[0]?.[0]
@@ -225,6 +277,22 @@ export class Api {
   }
   disconnect(sellerId: string, pin: string) {
     return this.request<{ message: string }>('POST', 'disconnect', { body: { seller_id: sellerId, pin }, seller: false })
+  }
+
+  // Caixa
+  cash() {
+    return this.request<CashState>('GET', 'cash')
+  }
+  openCash(openingAmount: number) {
+    return this.request<{ session: CashSession }>('POST', 'cash/open', { body: { opening_amount: openingAmount } })
+  }
+  cashMovement(type: 'sangria' | 'suprimento', amount: number, reason: string | null) {
+    return this.request<{ movement: CashMovement; session: CashSession }>('POST', 'cash/movements', {
+      body: { type, amount, reason },
+    })
+  }
+  closeCash(countedCash: number, notes: string | null) {
+    return this.request<{ session: CashSession }>('POST', 'cash/close', { body: { counted_cash: countedCash, notes } })
   }
 
   // Catálogo

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Receipt, Sale } from './api'
+import type { CashMovement, CashSession, Receipt, Sale } from './api'
 import { Ticket } from './escpos'
 import { fmt, fmtDate, PAYMENT_LABELS } from './money'
 import type { Settings } from './settings'
@@ -103,5 +103,49 @@ export function testTicket(s: Settings): number[] {
   const t = new Ticket(s.paperColumns)
   t.align('center').bold(true).line('Credix PDV').bold(false).line('Teste de impressao').align('left').rule()
   t.pair('Colunas', String(s.paperColumns)).line('0123456789'.repeat(Math.ceil(s.paperColumns / 10)).slice(0, s.paperColumns))
+  return t.cut().build()
+}
+
+export function cashCloseTicket(s: Settings, c: CashSession, store: StoreInfo & { terminal: string }): number[] {
+  const t = new Ticket(s.paperColumns)
+  header(t, store, 'FECHAMENTO DE CAIXA')
+  t.line(store.terminal)
+  t.line(`Aberto: ${new Date(c.opened_at).toLocaleString('pt-BR')} - ${c.opened_by ?? ''}`)
+  if (c.closed_at) t.line(`Fechado: ${new Date(c.closed_at).toLocaleString('pt-BR')} - ${c.closed_by ?? ''}`)
+  t.rule()
+  const sum = c.summary
+  t.pair('Troco inicial', fmt(sum.opening))
+  for (const m of sum.methods) if (m.count > 0 || m.type === 'dinheiro') t.pair(`${m.label} (${m.count})`, fmt(m.total))
+  if (sum.suprimento > 0) t.pair('Suprimentos', `+${fmt(sum.suprimento)}`)
+  if (sum.sangria > 0) t.pair('Sangrias', `-${fmt(sum.sangria)}`)
+  if (sum.crediario_sold > 0) t.pair('Vendido no crediario', fmt(sum.crediario_sold))
+  t.rule().bold(true).pair('Dinheiro esperado', fmt(sum.expected_cash)).bold(false)
+  if (c.counted_cash !== null) {
+    t.pair('Dinheiro contado', fmt(c.counted_cash))
+    const d = c.difference ?? 0
+    t.bold(true).pair(d === 0 ? 'Caixa bateu' : d < 0 ? 'FALTA' : 'SOBRA', fmt(Math.abs(d))).bold(false)
+  }
+  for (const m of c.movements) {
+    t.line(`${m.type === 'sangria' ? 'Sangria' : 'Suprimento'} ${new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} ${m.user ?? ''}`)
+    t.pair(`  ${m.reason ?? ''}`, fmt(m.amount))
+  }
+  if (c.notes) t.rule().wrap(`Obs.: ${c.notes}`)
+  t.feed(2).line('_'.repeat(Math.min(32, s.paperColumns))).line('Assinatura')
+  return t.cut().build()
+}
+
+export function movementTicket(
+  s: Settings,
+  m: CashMovement,
+  store: StoreInfo & { terminal: string },
+  openDrawer = false,
+): number[] {
+  const t = new Ticket(s.paperColumns)
+  if (openDrawer) t.drawer()
+  header(t, store, m.type === 'sangria' ? 'SANGRIA' : 'SUPRIMENTO')
+  t.line(store.terminal).line(new Date(m.created_at).toLocaleString('pt-BR'))
+  t.bold(true).pair('Valor', fmt(m.amount)).bold(false)
+  if (m.reason) t.wrap(`Motivo: ${m.reason}`)
+  t.feed(2).line('_'.repeat(Math.min(32, s.paperColumns))).line(m.user ?? 'Assinatura')
   return t.cut().build()
 }

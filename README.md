@@ -18,6 +18,13 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 - Dispensar juros e desconto (conforme a permissão do usuário no Credix)
 - Divide em várias formas, calcula troco, Pix com QR; copia a mensagem do WhatsApp
 
+**Caixa** (opcional, ligado em Terminais PDV no web)
+- Abertura com troco inicial, sangria e suprimento (com comprovante) e fechamento contando a gaveta: mostra o esperado por forma de pagamento e a diferença, e imprime o resumo
+- É o mesmo caixa do Credix web: o dono pode abrir pelo web e o vendedor continua no desktop
+
+**Conexão**
+- Selo no topo (e na tela de PIN): **Online** ou **Sem conexão**, conferindo o servidor a cada 20 s. Sem conexão, vendas e recebimentos ficam pausados (ainda não há modo offline)
+
 **Impressão** (`F12` → Configurações)
 - Cupom ESC/POS em impressora térmica **de rede** (IP:9100) ou **instalada no computador** (USB, modo RAW no Windows / CUPS no macOS)
 - Bobina de 80 mm ou 58 mm, impressão automática e abertura de gaveta quando entra dinheiro
