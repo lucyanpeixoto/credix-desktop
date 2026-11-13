@@ -25,25 +25,30 @@ export async function listPrinters(): Promise<string[]> {
   return invoke<string[]>('list_printers')
 }
 
-function header(t: Ticket, company: string, title: string) {
-  t.align('center').bold(true).big(true).line(company).big(false).bold(false)
-  t.line(title).align('left').rule()
-}
-
-export interface SaleTicketExtra {
+export interface StoreInfo {
   company: string
   operator: string
-  seller?: string
+  address?: string | null
+  phone?: string | null
+}
+
+function header(t: Ticket, store: StoreInfo, title: string) {
+  t.align('center').bold(true).big(true).line(store.company).big(false).bold(false)
+  if (store.address) t.wrap(store.address)
+  if (store.phone) t.line(store.phone)
+  t.bold(true).line(title).bold(false).align('left').rule()
+}
+
+export interface SaleTicketExtra extends StoreInfo {
   cashTendered?: number
 }
 
 export function saleTicket(s: Settings, sale: Sale, extra: SaleTicketExtra, openDrawer = false): number[] {
   const t = new Ticket(s.paperColumns)
   if (openDrawer) t.drawer()
-  header(t, extra.company, `VENDA #${sale.code}`)
+  header(t, extra, `VENDA #${sale.code}`)
   t.line(sale.created_at_formatted)
   if (sale.customer) t.line(`Cliente: ${sale.customer.name}`)
-  if (extra.seller) t.line(`Vendedor: ${extra.seller}`)
   t.rule()
   for (const it of sale.items ?? []) {
     t.wrap(it.product_name)
@@ -68,19 +73,19 @@ export function saleTicket(s: Settings, sale: Sale, extra: SaleTicketExtra, open
       t.pair(`  ${i.installment_number}a - ${fmtDate(i.due_date)}${paid}`, fmt(i.amount))
     }
   }
-  t.rule().align('center').line(`Operador: ${extra.operator}`).line('Nao e documento fiscal').align('left')
+  t.rule().align('center').line(`Vendedor: ${extra.operator}`).line('Nao e documento fiscal').align('left')
   return t.cut().build()
 }
 
 export function receiptTicket(
   s: Settings,
   r: Receipt,
-  extra: { company: string; operator: string; customer: string },
+  extra: StoreInfo & { customer: string },
   openDrawer = false,
 ): number[] {
   const t = new Ticket(s.paperColumns)
   if (openDrawer) t.drawer()
-  header(t, extra.company, `RECEBIMENTO #${r.code}`)
+  header(t, extra, `RECEBIMENTO #${r.code}`)
   t.line(new Date(r.created_at).toLocaleString('pt-BR'))
   t.line(`Cliente: ${extra.customer}`).rule()
   t.pair('Parcelas', fmt(r.principal))
@@ -90,7 +95,7 @@ export function receiptTicket(
   t.bold(true).pair('TOTAL PAGO', fmt(r.total)).bold(false)
   for (const m of r.methods.filter((m) => m.type !== 'desconto')) t.pair(`  ${PAYMENT_LABELS[m.type] ?? m.type}`, fmt(m.amount))
   if (r.change > 0) t.pair('Troco', fmt(r.change))
-  t.rule().align('center').line(`Operador: ${extra.operator}`).line('Nao e documento fiscal').align('left')
+  t.rule().align('center').line(`Vendedor: ${extra.operator}`).line('Nao e documento fiscal').align('left')
   return t.cut().build()
 }
 

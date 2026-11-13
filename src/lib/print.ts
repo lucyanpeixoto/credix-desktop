@@ -9,15 +9,17 @@ export interface PrintResult {
 }
 
 const base = () => ({
-  company: session.user?.company?.name ?? 'Credix',
-  operator: session.user?.first_name ?? session.user?.name ?? '',
+  company: session.company?.name ?? 'Credix',
+  operator: session.seller?.name ?? '',
+  address: session.company?.address,
+  phone: session.company?.phone,
 })
 
-export async function printSale(sale: Sale, opts: { cashTendered?: number; seller?: string; drawer?: boolean } = {}): Promise<PrintResult> {
+export async function printSale(sale: Sale, opts: { cashTendered?: number; drawer?: boolean } = {}): Promise<PrintResult> {
   const s = session.settings
   if (!printerReady(s)) return { ok: false, message: 'Nenhuma impressora configurada.' }
   try {
-    await sendToPrinter(s, saleTicket(s, sale, { ...base(), seller: opts.seller, cashTendered: opts.cashTendered }, !!opts.drawer && s.openDrawer))
+    await sendToPrinter(s, saleTicket(s, sale, { ...base(), cashTendered: opts.cashTendered }, !!opts.drawer && s.openDrawer))
     return { ok: true }
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message ?? e) }

@@ -3,29 +3,48 @@
   import { modalStack } from './lib/components/modalStack'
   import SettingsModal from './lib/components/SettingsModal.svelte'
   import { printerReady } from './lib/printer'
-  import Login from './lib/screens/Login.svelte'
+  import Lock from './lib/screens/Lock.svelte'
+  import Pair from './lib/screens/Pair.svelte'
   import ReceiveScreen from './lib/screens/ReceiveScreen.svelte'
   import SaleScreen from './lib/screens/SaleScreen.svelte'
   import { session } from './lib/session.svelte'
+  import Icon from './lib/ui/Icon.svelte'
+  import Logo from './lib/ui/Logo.svelte'
 
   let tab = $state<'sale' | 'receive'>('sale')
   let settingsOpen = $state(false)
   let online = $state(navigator.onLine)
 
   onMount(() => {
-    session.restore()
+    session.refresh()
     const up = () => (online = true)
     const down = () => (online = false)
     addEventListener('online', up)
     addEventListener('offline', down)
+
+    // Bloqueio por inatividade: volta a tela de PIN (não interrompe Pix aguardando).
+    const idle = setInterval(() => {
+      if (!session.seller || session.busy > 0) return
+      if (Date.now() - session.lastActivity > session.lockMinutes * 60_000) lockNow()
+    }, 10_000)
+
     return () => {
+      clearInterval(idle)
       removeEventListener('online', up)
       removeEventListener('offline', down)
     }
   })
 
+  function lockNow() {
+    settingsOpen = false
+    tab = 'sale'
+    session.lock()
+  }
+
   function keydown(e: KeyboardEvent) {
-    if (!session.user || modalStack.open) return
+    session.touch()
+    if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) e.preventDefault()
+    if (!session.seller || modalStack.open) return
     if (e.key === 'F1') {
       e.preventDefault()
       tab = 'sale'
@@ -35,39 +54,59 @@
     } else if (e.key === 'F12') {
       e.preventDefault()
       settingsOpen = true
+    } else if (e.key === 'F11' || (e.ctrlKey && e.key.toLowerCase() === 'l')) {
+      e.preventDefault()
+      lockNow()
     }
-  }
-
-  // Evita recarregar a página (F5) e o menu do navegador no meio de uma venda.
-  function blockBrowserKeys(e: KeyboardEvent) {
-    if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) e.preventDefault()
   }
 </script>
 
-<svelte:window onkeydown={(e) => (blockBrowserKeys(e), keydown(e))} oncontextmenu={(e) => import.meta.env.PROD && e.preventDefault()} />
+<svelte:window
+  onkeydown={keydown}
+  onpointerdown={() => session.touch()}
+  onwheel={() => session.touch()}
+  oncontextmenu={(e) => import.meta.env.PROD && e.preventDefault()}
+/>
 
-{#if session.restoring}
-  <div class="center muted">Conectando…</div>
-{:else if !session.user}
-  <Login />
+{#if !session.paired}
+  <Pair />
+{:else if !session.seller}
+  <Lock onsettings={() => (settingsOpen = true)} />
 {:else}
   <div class="shell">
     <header>
-      <strong class="brand">{session.user.company?.name ?? 'Credix'}</strong>
+      <div class="brand">
+        <Logo size={32} />
+        <div>
+          <strong>{session.company?.name ?? 'Credix'}</strong>
+          <span>Credix PDV · {session.info?.terminal.name}</span>
+        </div>
+      </div>
       <nav>
-        <button class:on={tab === 'sale'} onclick={() => (tab = 'sale')}>Venda<kbd>F1</kbd></button>
-        <button class:on={tab === 'receive'} onclick={() => (tab = 'receive')}>Receber<kbd>F2</kbd></button>
+        <button class:on={tab === 'sale'} onclick={() => (tab = 'sale')}>Venda <kbd>F1</kbd></button>
+        <button class:on={tab === 'receive'} onclick={() => (tab = 'receive')}>Receber <kbd>F2</kbd></button>
       </nav>
       <span class="spacer"></span>
-      {#if !online}<span class="badge late">Sem internet</span>{/if}
-      {#if !printerReady(session.settings)}<span class="badge">Sem impressora</span>{/if}
-      <span class="muted">{session.user.first_name}</span>
-      <button class="ghost" onclick={() => (settingsOpen = true)}>Configurações<kbd>F12</kbd></button>
-      <button class="ghost" onclick={() => session.logout()}>Sair</button>
+      {#if !online}
+        <span class="pill bad"><Icon name="wifiOff" size={14} /> Sem internet</span>
+      {/if}
+      {#if printerReady(session.settings)}
+        <span class="pill good"><Icon name="printer" size={14} /> Impressora</span>
+      {:else}
+        <span class="pill"><Icon name="printer" size={14} /> Sem impressora</span>
+      {/if}
+      <button class="me ghost" onclick={lockNow} title="Trocar vendedor (F11)">
+        <span class="avatar sm">{session.seller.initials}</span>
+        {session.seller.first_name}
+        <Icon name="lock" size={15} />
+      </button>
+      <button class="icon" onclick={() => (settingsOpen = true)} aria-label="Configurações (F12)"><Icon name="gear" /></button>
     </header>
     <main>
-      <div class="tab" class:hidden={tab !== 'sale'}><SaleScreen active={tab === 'sale' && !settingsOpen} /></div>
-      <div class="tab" class:hidden={tab !== 'receive'}><ReceiveScreen active={tab === 'receive' && !settingsOpen} /></div>
+      {#key session.seller.id}
+        <div class="tab" class:hidden={tab !== 'sale'}><SaleScreen active={tab === 'sale' && !settingsOpen} /></div>
+        <div class="tab" class:hidden={tab !== 'receive'}><ReceiveScreen active={tab === 'receive' && !settingsOpen} /></div>
+      {/key}
     </main>
   </div>
 {/if}
@@ -77,11 +116,6 @@
 {/if}
 
 <style>
-  .center {
-    height: 100%;
-    display: grid;
-    place-items: center;
-  }
   .shell {
     height: 100%;
     display: grid;
@@ -90,26 +124,89 @@
   header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 14px;
+    gap: 14px;
+    padding: 10px 20px;
     background: #fff;
     border-bottom: 1px solid var(--line);
   }
   .brand {
-    font-size: 16px;
-    margin-right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand div {
+    display: grid;
+  }
+  .brand strong {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .brand span {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
   }
   nav {
     display: flex;
-    gap: 6px;
+    gap: 4px;
+    padding: 4px;
+    background: var(--soft);
+    border-radius: 12px;
   }
   nav button {
-    border-color: transparent;
+    height: 36px;
+    border: 0;
+    background: transparent;
+    border-radius: 9px;
+    color: #475569;
   }
   nav button.on {
-    background: #eef4ff;
+    background: #fff;
     color: var(--brand);
-    border-color: #c7dbff;
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+  }
+  nav button.on kbd {
+    border-color: var(--brand-200);
+    color: var(--brand);
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--soft);
+    color: var(--muted);
+  }
+  .pill.good {
+    background: #d1fae5;
+    color: var(--ok);
+  }
+  .pill.bad {
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+  .me {
+    height: 40px;
+    padding: 0 10px 0 4px;
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .avatar.sm {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .icon {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    color: #475569;
   }
   main {
     min-height: 0;

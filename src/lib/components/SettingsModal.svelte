@@ -34,12 +34,9 @@
   }
 
   function save() {
-    const serverUrl = form.serverUrl.trim().replace(/\/+$/, '')
-    const changed = serverUrl !== session.settings.serverUrl
-    session.updateSettings({ ...form, serverUrl })
+    // O servidor só muda ao conectar o caixa (tela de pareamento).
+    session.updateSettings({ ...form, serverUrl: session.settings.serverUrl })
     onclose()
-    // O token é do servidor antigo.
-    if (changed) session.clear()
   }
 </script>
 
@@ -96,9 +93,14 @@
     {#if status}<div class="alert" class:ok={status.ok}>{status.text}</div>{/if}
   {/if}
 
-  <h3>Servidor</h3>
-  <label>Endereço do Credix <input bind:value={form.serverUrl} /></label>
-  <p class="muted small">Trocar o servidor encerra a sessão e pede login de novo.</p>
+  <h3>Este caixa</h3>
+  <div class="info">
+    <div class="row"><span class="muted">Loja</span><span class="spacer"></span><strong>{session.company?.name ?? '—'}</strong></div>
+    <div class="row"><span class="muted">Terminal</span><span class="spacer"></span><strong>{session.info?.terminal.name ?? '—'}</strong></div>
+    <div class="row"><span class="muted">Bloqueia após</span><span class="spacer"></span><strong>{session.lockMinutes} min sem uso</strong></div>
+    <div class="row"><span class="muted">Servidor</span><span class="spacer"></span><span>{session.settings.serverUrl}</span></div>
+  </div>
+  <p class="muted small">Para desconectar este computador da loja, use “Desconectar caixa” na tela de PIN (pede o PIN de um dono ou gerente).</p>
 
   {#snippet footer()}
     <button onclick={onclose}>Cancelar</button>
@@ -109,6 +111,15 @@
 <style>
   h3 {
     font-size: 15px;
+    font-weight: 800;
+  }
+  .info {
+    display: grid;
+    gap: 6px;
+    font-size: 14px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--soft);
   }
   .grid {
     display: grid;

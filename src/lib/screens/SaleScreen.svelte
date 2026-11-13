@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { ApiError, type Customer, type Product, type Sale } from '../api'
+  import { ApiError, type Category, type Customer, type Product, type Sale } from '../api'
   import { fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
   import Checkout from '../components/Checkout.svelte'
   import CustomerPicker from '../components/CustomerPicker.svelte'
@@ -10,22 +10,23 @@
   import { printSale, type PrintResult } from '../print'
   import { printerReady } from '../printer'
   import { session } from '../session.svelte'
+  import Icon from '../ui/Icon.svelte'
 
   let { active }: { active: boolean } = $props()
 
-  // Venda em andamento
+  // Venda em andamento (o vendedor é quem entrou com o PIN)
   let items = $state<CartItem[]>([])
   let customer = $state<Customer | null>(null)
-  let sellerId = $state<string | null>(null)
   let discount = $state(0)
-  let notes = $state('')
 
-  // Busca
+  // Catálogo
   let searchEl = $state<HTMLInputElement>()
   let search = $state('')
-  let results = $state<Product[]>([])
+  let categories = $state<Category[]>([])
+  let categoryId = $state<string | null>(null)
+  let products = $state<Product[]>([])
   let highlighted = $state(-1)
-  let searching = $state(false)
+  let loading = $state(false)
   let flash = $state<{ kind: 'ok' | 'error'; text: string } | null>(null)
   let timer: ReturnType<typeof setTimeout> | undefined
   let seq = 0
@@ -37,20 +38,29 @@
   let discountPercent = $state(false)
   let done = $state<{ sale: Sale; cashTendered?: number; print?: PrintResult } | null>(null)
 
-  let sellers = $state<{ id: string; name: string }[]>([])
-
   const subtotal = $derived(subtotalOf(items))
   const total = $derived(round2(Math.max(0, subtotal - discount)))
   const count = $derived(items.reduce((s, i) => s + i.quantity, 0))
+  const qtyById = $derived(new Map(items.filter((i) => i.product_id).map((i) => [i.product_id!, i.quantity])))
+  const searching = $derived(parseQuantityPrefix(search).term.length >= 2)
+
+  const TILE = ['tile-blue', 'tile-green', 'tile-amber', 'tile-pink', 'tile-violet']
+  const tileOf = (p: Product) => TILE[[...p.id].reduce((s, c) => s + c.charCodeAt(0), 0) % TILE.length]
+  const initialsOf = (name: string) =>
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
 
   onMount(async () => {
-    sellerId = session.user?.id ?? null
-    if (!session.isSeller) {
-      try {
-        sellers = await session.api.sellers()
-      } catch {
-        sellers = []
-      }
+    loadProducts()
+    try {
+      categories = (await session.api.categories()).data.filter((c) => !c.parent_id)
+    } catch {
+      categories = []
     }
   })
 
@@ -75,51 +85,59 @@
     }, kind === 'error' ? 4000 : 1500)
   }
 
-  function onSearchInput() {
-    clearTimeout(timer)
-    highlighted = -1
-    const { term } = parseQuantityPrefix(search)
-    // Só números: provavelmente leitor de código de barras, que termina com Enter.
-    if (term.length < 2 || /^\d{6,}$/.test(term)) {
-      results = []
-      return
-    }
-    timer = setTimeout(() => loadResults(term), 220)
-  }
-
-  async function loadResults(term: string) {
+  async function loadProducts() {
+    const term = parseQuantityPrefix(search).term
     const mine = ++seq
-    searching = true
+    loading = true
     try {
-      const res = await session.api.products(term, 10)
-      if (mine === seq) results = res.data
+      const res = await session.api.products(term.length >= 2 ? term : '', 40, term.length >= 2 ? null : categoryId)
+      if (mine === seq) {
+        products = res.data
+        highlighted = term.length >= 2 && res.data.length ? 0 : -1
+      }
     } catch (e) {
       if (mine === seq) say('error', (e as Error).message)
     } finally {
-      if (mine === seq) searching = false
+      if (mine === seq) loading = false
     }
   }
 
-  function add(p: Product, quantity: number) {
+  function onSearchInput() {
+    clearTimeout(timer)
+    const { term } = parseQuantityPrefix(search)
+    // Só números longos: leitor de código de barras, que termina com Enter.
+    if (/^\d{6,}$/.test(term)) return
+    timer = setTimeout(loadProducts, 220)
+  }
+
+  function pickCategory(id: string | null) {
+    categoryId = id
+    search = ''
+    loadProducts()
+    focusSearch()
+  }
+
+  function add(p: Product, quantity = 1) {
     const existing = items.find((i) => i.product_id === p.id)
     if (existing) {
       existing.quantity += quantity
-      // Leva o item para o fim, onde o caixa está olhando.
       items = [...items.filter((i) => i !== existing), existing]
     } else {
       items = [...items, fromProduct(p, quantity)]
     }
     say('ok', `${quantity > 1 ? `${quantity}× ` : ''}${p.name}`)
-    search = ''
-    results = []
-    highlighted = -1
+    if (search) {
+      search = ''
+      loadProducts()
+    }
+    focusSearch()
   }
 
   async function submitSearch() {
     clearTimeout(timer)
     const { quantity, term } = parseQuantityPrefix(search)
     if (!term) return
-    if (highlighted >= 0 && results[highlighted]) return add(results[highlighted], quantity)
+    if (highlighted >= 0 && products[highlighted] && searching) return add(products[highlighted], quantity)
 
     // Enter: primeiro o código exato (leitor), depois a busca por nome.
     try {
@@ -128,39 +146,30 @@
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 404) return say('error', (e as Error).message)
     }
-    const mine = ++seq
-    try {
-      const res = await session.api.products(term, 10)
-      if (mine !== seq) return
-      if (res.data.length === 1) return add(res.data[0], quantity)
-      results = res.data
-      highlighted = res.data.length ? 0 : -1
-      if (!res.data.length) say('error', `Nenhum produto com “${term}”.`)
-    } catch (e) {
-      say('error', (e as Error).message)
-    }
+    await loadProducts()
+    if (products.length === 1) return add(products[0], quantity)
+    if (!products.length) say('error', `Nenhum produto com “${term}”.`)
   }
 
   function searchKeydown(e: KeyboardEvent) {
+    const cols = 4
     if (e.key === 'Enter') {
       e.preventDefault()
       submitSearch()
-    } else if (e.key === 'ArrowDown' && results.length) {
+    } else if (searching && products.length && ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault()
-      highlighted = Math.min(highlighted + 1, results.length - 1)
-    } else if (e.key === 'ArrowUp' && results.length) {
-      e.preventDefault()
-      highlighted = Math.max(highlighted - 1, -1)
-    } else if (e.key === 'Escape' && (search || results.length)) {
+      const step = { ArrowDown: cols, ArrowUp: -cols, ArrowLeft: -1, ArrowRight: 1 }[e.key]!
+      highlighted = Math.min(products.length - 1, Math.max(0, highlighted + step))
+    } else if (e.key === 'Escape' && search) {
       e.preventDefault()
       e.stopPropagation()
       search = ''
-      results = []
+      loadProducts()
     }
   }
 
   function setQty(item: CartItem, q: number) {
-    if (!Number.isFinite(q) || q < 1) q = 1
+    if (!Number.isFinite(q) || q < 1) return remove(item)
     item.quantity = Math.min(9999, Math.floor(q))
   }
 
@@ -207,20 +216,17 @@
     items = []
     customer = null
     discount = 0
-    notes = ''
-    sellerId = session.user?.id ?? null
     search = ''
-    results = []
   }
 
   async function finished(sale: Sale, cashTendered: number | undefined) {
-    const seller = sellers.find((s) => s.id === sellerId)?.name
     done = { sale, cashTendered }
     modal = 'done'
     reset()
+    loadProducts()
     const cashIn = sale.payment_type === 'dinheiro' || (sale.installments ?? []).some((i) => i.status === 'paid')
     if (session.settings.autoPrint && printerReady(session.settings)) {
-      done.print = await printSale(sale, { cashTendered, seller, drawer: cashIn })
+      done.print = await printSale(sale, { cashTendered, drawer: cashIn })
     }
   }
 
@@ -230,13 +236,24 @@
   }
 
   function windowKeydown(e: KeyboardEvent) {
-    if (!active || modalStack.open) return
+    if (!active) return
+    if (modal === 'done') {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        modal = ''
+      } else if (e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        reprint()
+      }
+      return
+    }
+    if (modalStack.open) return
     const map: Record<string, () => void> = {
       F3: focusSearch,
-      F4: openCustom,
-      F6: () => (modal = 'customer'),
+      F4: () => (modal = 'customer'),
+      F6: openCustom,
       F7: () => items.length && openDiscount(),
-      F10: () => items.length && (modal = 'checkout'),
+      F9: () => items.length && (modal = 'checkout'),
     }
     const fn = map[e.key]
     if (fn) {
@@ -247,135 +264,122 @@
       modal = 'clear'
     }
   }
-
-  function doneKeydown(e: KeyboardEvent) {
-    if (modal !== 'done') return
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      modal = ''
-    } else if (e.key.toLowerCase() === 'p') {
-      e.preventDefault()
-      reprint()
-    }
-  }
 </script>
 
-<svelte:window onkeydown={(e) => (windowKeydown(e), doneKeydown(e))} />
+<svelte:window onkeydown={windowKeydown} />
 
 <div class="screen">
-  <section class="left">
-    <div class="search panel">
+  <section class="catalog">
+    <label class="search">
+      <span class="lens"><Icon name="search" size={22} /></span>
       <input
         bind:this={searchEl}
         bind:value={search}
         oninput={onSearchInput}
         onkeydown={searchKeydown}
-        placeholder="Código de barras, código ou nome do produto  (3*código para quantidade)"
+        aria-label="Buscar produto"
+        placeholder="Passe o código de barras ou digite o nome  ·  3*código para quantidade"
         autocomplete="off"
         spellcheck="false"
       />
       {#if flash}
-        <div class="flash {flash.kind}">{flash.text}</div>
+        <span class="flash {flash.kind}">{flash.text}</span>
+      {:else}
+        <kbd class="hint">F3</kbd>
       {/if}
-      {#if results.length}
-        <div class="results">
-          {#each results as p, i (p.id)}
-            <button class="result" class:hl={i === highlighted} onclick={() => add(p, parseQuantityPrefix(search).quantity)} onmouseenter={() => (highlighted = i)}>
-              <span>
-                <strong>{p.name}</strong>
-                <span class="muted small">{p.sku ?? ''}{#if p.stock !== null} · estoque {p.stock}{/if}</span>
+    </label>
+
+    {#if categories.length && !searching}
+      <div class="chips">
+        <button class:on={!categoryId} onclick={() => pickCategory(null)}>Todos</button>
+        {#each categories as c (c.id)}
+          <button class:on={categoryId === c.id} onclick={() => pickCategory(c.id)}>{c.name}</button>
+        {/each}
+      </div>
+    {/if}
+
+    <div class="grid-wrap">
+      {#if products.length}
+        <div class="grid">
+          {#each products as p, i (p.id)}
+            {@const q = qtyById.get(p.id)}
+            <button class="product" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
+              {#if q}<span class="qty">{q}</span>{/if}
+              <span class="tile {tileOf(p)}">{initialsOf(p.name)}</span>
+              <span class="name">{p.name}</span>
+              <span class="bottom">
+                <span class="price">{fmt(p.price)}</span>
+                {#if p.stock !== null}
+                  <span class="stock" class:zero={p.stock <= 0} class:low={p.stock > 0 && p.stock <= 5}>estoque {p.stock}</span>
+                {/if}
               </span>
-              <span class="num">{fmt(p.price)}</span>
             </button>
           {/each}
         </div>
-      {:else if searching}
-        <div class="results muted small pad">Buscando…</div>
-      {/if}
-    </div>
-
-    <div class="cart panel">
-      {#if items.length}
-        <table>
-          <thead>
-            <tr><th>#</th><th>Produto</th><th class="num">Qtd</th><th class="num">Unitário</th><th class="num">Total</th><th></th></tr>
-          </thead>
-          <tbody>
-            {#each items as item, i (item.key)}
-              <tr>
-                <td class="muted">{i + 1}</td>
-                <td>
-                  {item.name}
-                  {#if !item.product_id}<span class="badge">avulso</span>{/if}
-                  {#if item.sku}<div class="muted small">{item.sku}</div>{/if}
-                </td>
-                <td class="num">
-                  <div class="qty">
-                    <button class="ghost" onclick={() => setQty(item, item.quantity - 1)} disabled={item.quantity <= 1}>−</button>
-                    <input type="number" min="1" value={item.quantity} onchange={(e) => setQty(item, Number(e.currentTarget.value))} />
-                    <button class="ghost" onclick={() => setQty(item, item.quantity + 1)}>+</button>
-                  </div>
-                </td>
-                <td class="num">{fmt(item.unit_price)}</td>
-                <td class="num"><strong>{fmt(round2(item.unit_price * item.quantity))}</strong></td>
-                <td><button class="ghost danger" onclick={() => remove(item)} aria-label="Remover">✕</button></td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
       {:else}
-        <div class="empty">
-          <p><strong>Caixa livre</strong></p>
-          <p class="muted">Passe o produto no leitor ou digite o nome.</p>
-        </div>
+        <p class="muted empty">{loading ? 'Carregando produtos…' : searching ? 'Nenhum produto encontrado.' : 'Nenhum produto nesta categoria.'}</p>
       {/if}
     </div>
   </section>
 
-  <aside class="right">
-    <div class="panel box">
-      <div class="row">
-        <span class="muted">Cliente</span>
-        <span class="spacer"></span>
-        <button class="ghost small" onclick={() => (modal = 'customer')}>{customer ? 'Trocar' : 'Escolher'}<kbd>F6</kbd></button>
-      </div>
+  <aside class="side">
+    <div class="customer">
       {#if customer}
         <div class="row">
-          <strong>{customer.name}</strong>
-          <span class="spacer"></span>
-          <button class="ghost danger small" onclick={() => (customer = null)}>remover</button>
+          <span class="avatar">{initialsOf(customer.name)}</span>
+          <div class="who">
+            <strong>{customer.name}</strong>
+            <span>{customer.cpf_formatted ?? 'sem CPF'}{#if customer.code} · #{customer.code}{/if}</span>
+          </div>
+          <button class="ghost x" onclick={() => (customer = null)} aria-label="Remover cliente"><Icon name="x" size={16} /></button>
         </div>
-        {#if customer.overdue_count}<span class="badge late">{customer.overdue_count} parcela(s) em atraso</span>{/if}
+        {#if customer.overdue_count}
+          <div class="alert warn row"><Icon name="alert" size={16} /> {customer.overdue_count} parcela(s) em atraso</div>
+        {/if}
       {:else}
-        <span class="muted small">Consumidor (opcional, obrigatório no crediário)</span>
-      {/if}
-
-      {#if sellers.length > 1}
-        <label>
-          Vendedor
-          <select bind:value={sellerId}>
-            {#each sellers as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
-          </select>
-        </label>
+        <button class="pick" onclick={() => (modal = 'customer')}>
+          <Icon name="user" size={18} />
+          <span>Consumidor <span class="muted">· escolher cliente</span></span>
+          <kbd>F4</kbd>
+        </button>
       {/if}
     </div>
 
-    <div class="panel box totals">
-      <div class="row"><span class="muted">Itens</span><span class="spacer"></span><span>{count}</span></div>
-      <div class="row"><span class="muted">Subtotal</span><span class="spacer"></span><span class="num">{fmt(subtotal)}</span></div>
-      <div class="row">
-        <button class="ghost link" onclick={openDiscount} disabled={!items.length}>Desconto<kbd>F7</kbd></button>
+    <div class="cart">
+      {#each items as item (item.key)}
+        <div class="line">
+          <div class="info">
+            <strong>{item.name}</strong>
+            <span>{item.product_id ? `${fmt(item.unit_price)} un.` : `avulso · ${fmt(item.unit_price)}`}</span>
+          </div>
+          <div class="stepper">
+            <button onclick={() => setQty(item, item.quantity - 1)} aria-label="Diminuir"><Icon name="minus" size={16} /></button>
+            <span>{item.quantity}</span>
+            <button onclick={() => setQty(item, item.quantity + 1)} aria-label="Aumentar"><Icon name="plus" size={16} /></button>
+          </div>
+          <span class="num total">{fmt(round2(item.unit_price * item.quantity))}</span>
+        </div>
+      {:else}
+        <div class="free">
+          <Icon name="cart" size={28} />
+          <strong>Caixa livre</strong>
+          <span class="muted">Passe o produto no leitor ou toque no produto.</span>
+        </div>
+      {/each}
+    </div>
+
+    <div class="totals">
+      <div class="row sub"><span>Subtotal · {count} {count === 1 ? 'item' : 'itens'}</span><span class="spacer"></span><span class="num">{fmt(subtotal)}</span></div>
+      <div class="row sub">
+        <button class="ghost link" onclick={openDiscount} disabled={!items.length}>Desconto <kbd>F7</kbd></button>
         <span class="spacer"></span>
-        <span class="num">{discount ? `−${fmt(discount)}` : fmt(0)}</span>
+        <span class="num" class:green={discount > 0}>{discount ? `− ${fmt(discount)}` : fmt(0)}</span>
       </div>
       <div class="grand"><span>Total</span><strong>{fmt(total)}</strong></div>
-    </div>
-
-    <div class="actions">
-      <button class="success big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda<kbd>F10</kbd></button>
+      <button class="primary big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda <kbd>F9</kbd></button>
       <div class="grid2">
-        <button onclick={openCustom}>Item avulso<kbd>F4</kbd></button>
-        <button class="danger" disabled={!items.length} onclick={() => (modal = 'clear')}>Cancelar<kbd>Ctrl+Del</kbd></button>
+        <button onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
+        <button class="danger" disabled={!items.length} onclick={() => (modal = 'clear')}>Cancelar <kbd>Ctrl+Del</kbd></button>
       </div>
     </div>
   </aside>
@@ -408,8 +412,8 @@
   <Modal title="Desconto" onclose={() => (modal = '')} width="420px">
     <form id="discount" class="form" onsubmit={saveDiscount}>
       <div class="row">
-        <button type="button" class:primary={!discountPercent} onclick={() => (discountPercent = false)}>R$</button>
-        <button type="button" class:primary={discountPercent} onclick={() => (discountPercent = true)}>%</button>
+        <button type="button" class:selected={!discountPercent} onclick={() => (discountPercent = false)}>R$</button>
+        <button type="button" class:selected={discountPercent} onclick={() => (discountPercent = true)}>%</button>
         <!-- svelte-ignore a11y_autofocus -->
         <input bind:value={discountInput} inputmode="decimal" autofocus placeholder={discountPercent ? '10' : 'R$ 0,00'} />
       </div>
@@ -440,8 +444,6 @@
     {items}
     {discount}
     {customer}
-    sellerId={session.isSeller ? null : sellerId}
-    {notes}
     oncustomer={(c) => (customer = c)}
     ondone={finished}
     onclose={() => (modal = '')}
@@ -452,7 +454,7 @@
       <div class="row"><span class="muted">Total</span><span class="spacer"></span><strong>{fmt(done.sale.total)}</strong></div>
       <div class="row"><span class="muted">Pagamento</span><span class="spacer"></span><span>{PAYMENT_LABELS[done.sale.payment_type]}</span></div>
       {#if done.cashTendered && done.cashTendered > done.sale.total}
-        <div class="troco">Troco <strong>{fmt(done.cashTendered - done.sale.total)}</strong></div>
+        <div class="money-box center"><span>Troco</span><strong>{fmt(done.cashTendered - done.sale.total)}</strong></div>
       {/if}
       {#if done.sale.payment_type === 'crediario' && done.sale.installments?.length}
         <div class="muted small">
@@ -464,8 +466,8 @@
       {/if}
     </div>
     {#snippet footer()}
-      <button onclick={reprint} disabled={!printerReady(session.settings)}>Imprimir<kbd>P</kbd></button>
-      <button class="primary" onclick={() => (modal = '')}>Nova venda<kbd>Enter</kbd></button>
+      <button onclick={reprint} disabled={!printerReady(session.settings)}>Imprimir <kbd>P</kbd></button>
+      <button class="primary" onclick={() => (modal = '')}>Nova venda <kbd>Enter</kbd></button>
     {/snippet}
   </Modal>
 {/if}
@@ -473,155 +475,366 @@
 <style>
   .screen {
     height: 100%;
-    display: grid;
-    grid-template-columns: 1fr 360px;
-    gap: 14px;
-    padding: 14px;
+    display: flex;
     min-height: 0;
   }
-  .left {
-    display: grid;
-    grid-template-rows: auto 1fr;
+  .catalog {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
     gap: 14px;
-    min-height: 0;
+    padding: 20px 24px;
   }
   .search {
     position: relative;
-    padding: 10px;
+    display: block;
   }
   .search input {
-    font-size: 20px;
-    padding: 14px 16px;
+    height: 60px;
+    border-radius: 16px;
+    border: 2px solid var(--line);
+    padding: 0 120px 0 52px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .search input:focus {
+    border-color: var(--brand);
+  }
+  .lens {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--faint);
+    display: flex;
+  }
+  .hint {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #f8fafc;
   }
   .flash {
     position: absolute;
-    right: 22px;
-    top: 22px;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 13px;
-    padding: 4px 10px;
+    font-weight: 700;
+    padding: 5px 12px;
     border-radius: 999px;
-    background: var(--ok-bg);
+    background: #d1fae5;
     color: var(--ok);
-    pointer-events: none;
   }
   .flash.error {
     background: var(--danger-bg);
     color: var(--danger);
   }
-  .results {
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    top: calc(100% - 4px);
-    z-index: 10;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
-    max-height: 50vh;
-    overflow: auto;
-  }
-  .pad {
-    padding: 12px;
-  }
-  .result {
-    width: 100%;
+  .chips {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    text-align: left;
-    border: 0;
-    border-radius: 0;
-    border-bottom: 1px solid var(--line);
+    gap: 8px;
+    flex-wrap: wrap;
   }
-  .result span {
-    display: grid;
+  .chips button {
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    color: #475569;
   }
-  .result.hl {
-    background: #eef4ff;
+  .chips button.on {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: #fff;
   }
-  .cart {
-    overflow: auto;
+  .grid-wrap {
+    flex: 1;
     min-height: 0;
+    overflow: auto;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 12px;
   }
   .empty {
+    padding: 40px 0;
+    text-align: center;
+  }
+  .product {
+    position: relative;
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 14px;
+    border-radius: 18px;
+    text-align: left;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+  }
+  .product:hover:not(:disabled) {
+    border-color: var(--brand-200);
+    background: #fff;
+  }
+  .product.incart {
+    border: 2px solid var(--brand);
+  }
+  .product.hl {
+    box-shadow: 0 0 0 4px rgb(37 99 235 / 20%);
+    border-color: var(--brand);
+  }
+  .qty {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--brand);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tile {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .tile-blue {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .tile-green {
+    background: #d1fae5;
+    color: #047857;
+  }
+  .tile-amber {
+    background: #fef3c7;
+    color: #b45309;
+  }
+  .tile-pink {
+    background: #fce7f3;
+    color: #be185d;
+  }
+  .tile-violet {
+    background: #ede9fe;
+    color: #6d28d9;
+  }
+  .name {
+    margin-top: 12px;
+    min-height: 40px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    color: var(--ink);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .bottom {
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .price {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+  .stock {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--faint);
+  }
+  .stock.low {
+    color: var(--warn);
+  }
+  .stock.zero {
+    color: var(--danger);
+  }
+  .side {
+    width: 420px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-left: 1px solid var(--line);
+    min-height: 0;
+  }
+  .customer {
+    padding: 16px;
+    border-bottom: 1px solid var(--line-soft);
+    display: grid;
+    gap: 10px;
+  }
+  .who {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+  }
+  .who strong {
+    font-size: 14px;
+  }
+  .who span {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .x {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--faint);
+  }
+  .pick {
+    justify-content: flex-start;
+    height: 48px;
+    border-style: dashed;
+    color: var(--ink-2);
+  }
+  .pick > span {
+    flex: 1;
+    text-align: left;
+  }
+  .cart {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .info {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+  }
+  .info strong {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .info span {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .stepper {
+    display: flex;
+    align-items: center;
+    border-radius: 12px;
+    background: var(--soft);
+    padding: 2px;
+  }
+  .stepper button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #475569;
+  }
+  .stepper button:hover:not(:disabled) {
+    background: #fff;
+  }
+  .stepper span {
+    min-width: 28px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .total {
+    width: 86px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .free {
     height: 100%;
     display: grid;
     place-content: center;
+    justify-items: center;
+    gap: 6px;
     text-align: center;
-    font-size: 18px;
+    color: var(--faint);
+    padding: 24px;
   }
-  .qty {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-  }
-  .qty input {
-    width: 64px;
-    text-align: center;
-    padding: 6px;
-  }
-  .qty button {
-    padding: 4px 8px;
-  }
-  .right {
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    gap: 14px;
-    min-height: 0;
-  }
-  .box {
-    padding: 14px;
-    display: grid;
-    gap: 10px;
-    align-content: start;
+  .free strong {
+    color: var(--ink);
+    font-size: 16px;
   }
   .totals {
-    align-content: end;
+    padding: 16px;
+    border-top: 1px solid var(--line);
+    display: grid;
+    gap: 8px;
+  }
+  .sub {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .sub .num {
+    color: var(--ink);
+  }
+  .sub .num.green {
+    color: var(--ok);
   }
   .link {
+    height: auto;
     padding: 0;
-    color: var(--brand);
+    gap: 6px;
+    color: var(--muted);
+    font-size: 13px;
   }
   .grand {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-top: 1px solid var(--line);
-    padding-top: 12px;
+    padding: 4px 0 6px;
+  }
+  .grand span {
+    font-size: 14px;
+    font-weight: 700;
+    color: #475569;
   }
   .grand strong {
-    font-size: 38px;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
   }
-  .actions {
-    display: grid;
-    gap: 10px;
+  .grid2 button {
+    font-size: 13px;
   }
-  .actions .big {
-    padding: 18px;
-    font-size: 19px;
-  }
-  .form {
+  .form,
+  .done {
     display: grid;
     gap: 12px;
   }
-  .done {
-    display: grid;
-    gap: 10px;
-  }
-  .troco {
+  .center {
     text-align: center;
-    font-size: 18px;
-    padding: 12px;
-    border-radius: 8px;
-    background: var(--ok-bg);
-    color: var(--ok);
-  }
-  .troco strong {
-    display: block;
-    font-size: 34px;
-  }
-  .small {
-    font-size: 12px;
   }
 </style>

@@ -3,18 +3,34 @@
 export interface Company {
   id: string
   name: string
-  slug: string
+  legal_name: string
+  phone: string | null
+  address: string | null
+  logo_url: string | null
   pix_online: boolean
+  late_charges: boolean
 }
 
-export interface User {
+export interface Seller {
   id: string
   name: string
   first_name: string
-  email: string
-  company_id: string
-  company?: Company
-  roles: string[]
+  initials: string
+  role: 'owner' | 'manager' | 'seller' | string | null
+  can_manage: boolean
+  has_pin: boolean
+}
+
+export interface TerminalInfo {
+  terminal: { id: string; name: string; lock_minutes: number }
+  company: Company
+  sellers: Seller[]
+}
+
+export interface Category {
+  id: string
+  name: string
+  parent_id?: string | null
 }
 
 export interface Product {
@@ -115,20 +131,36 @@ export interface Receivable {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public errors: Record<string, string[]> = {}) {
+  constructor(
+    message: string,
+    public status: number,
+    public errors: Record<string, string[]> = {},
+    public code: string | null = null,
+  ) {
     super(message)
   }
 }
 
-export class Api {
-  constructor(private baseUrl: string, private token: string | null = null, private onUnauthorized?: () => void) {}
+export interface Credentials {
+  token: string | null
+  sellerId: string | null
+  pin: string | null
+}
 
-  setToken(token: string | null) {
-    this.token = token
-  }
+/**
+ * Cliente da API do PDV desktop (/api/pdv). O computador entra com o token do
+ * terminal; as chamadas de dados levam também o vendedor e o PIN dele.
+ */
+export class Api {
+  constructor(
+    private baseUrl: string,
+    private creds: () => Credentials,
+    private onUnpaired?: () => void,
+    private onSellerRejected?: () => void,
+  ) {}
 
   private url(path: string, query?: Record<string, unknown>): string {
-    const u = new URL(`${this.baseUrl.replace(/\/+$/, '')}/api/${path.replace(/^\/+/, '')}`)
+    const u = new URL(`${this.baseUrl.replace(/\/+$/, '')}/api/pdv/${path.replace(/^\/+/, '')}`)
     for (const [k, v] of Object.entries(query ?? {})) {
       if (v === undefined || v === null || v === '') continue
       if (Array.isArray(v)) v.forEach((x) => u.searchParams.append(`${k}[]`, String(x)))
@@ -137,16 +169,25 @@ export class Api {
     return u.toString()
   }
 
-  async request<T>(method: string, path: string, opts: { query?: Record<string, unknown>; body?: unknown } = {}): Promise<T> {
+  async request<T>(
+    method: string,
+    path: string,
+    opts: { query?: Record<string, unknown>; body?: unknown; seller?: boolean } = {},
+  ): Promise<T> {
+    const c = this.creds()
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+    if (c.token) headers.Authorization = `Bearer ${c.token}`
+    if (opts.seller !== false && c.sellerId && c.pin) {
+      headers['X-Pdv-Seller'] = c.sellerId
+      headers['X-Pdv-Pin'] = c.pin
+    }
+
     let res: Response
     try {
       res = await fetch(this.url(path, opts.query), {
         method,
-        headers: {
-          Accept: 'application/json',
-          ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
-        },
+        headers,
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       })
     } catch {
@@ -156,35 +197,44 @@ export class Api {
     const data = await res.json().catch(() => null)
     if (res.ok) return data as T
 
-    if (res.status === 401 && this.token) this.onUnauthorized?.()
+    const code: string | null = data?.code ?? null
+    if (res.status === 401 && code === 'terminal_unpaired') this.onUnpaired?.()
+    else if (res.status === 401 && code === 'seller_locked' && opts.seller !== false) this.onSellerRejected?.()
+
     const errors: Record<string, string[]> = data?.errors ?? {}
     const first = Object.values(errors)[0]?.[0]
     const message =
       first ??
       data?.message ??
       (res.status === 403 ? 'Você não tem permissão para isso.' : `Erro no servidor (${res.status}).`)
-    throw new ApiError(message, res.status, errors)
+    throw new ApiError(message, res.status, errors, code)
   }
 
-  // Auth
-  login(email: string, password: string) {
-    return this.request<{ token: string; user: User }>('POST', 'auth/login', {
-      body: { email, password, device_name: 'credix-desktop' },
+  // Terminal
+  pair(code: string, deviceName: string) {
+    return this.request<TerminalInfo & { token: string }>('POST', 'pair', {
+      body: { code, device_name: deviceName },
+      seller: false,
     })
   }
-  me() {
-    return this.request<{ user: User }>('GET', 'auth/me')
+  terminal() {
+    return this.request<TerminalInfo>('GET', 'terminal', { seller: false })
   }
-  logout() {
-    return this.request('POST', 'auth/logout')
+  unlock(sellerId: string, pin: string) {
+    return this.request<{ seller: Seller }>('POST', 'unlock', { body: { seller_id: sellerId, pin }, seller: false })
   }
-  sellers() {
-    return this.request<{ id: string; name: string }[]>('GET', 'sellers')
+  disconnect(sellerId: string, pin: string) {
+    return this.request<{ message: string }>('POST', 'disconnect', { body: { seller_id: sellerId, pin }, seller: false })
   }
 
-  // Produtos
-  products(search: string, perPage = 12) {
-    return this.request<{ data: Product[] }>('GET', 'products', { query: { search, per_page: perPage } })
+  // Catálogo
+  categories() {
+    return this.request<{ data: Category[] }>('GET', 'categories')
+  }
+  products(search: string, perPage = 12, categoryId?: string | null) {
+    return this.request<{ data: Product[] }>('GET', 'products', {
+      query: { search, per_page: perPage, category_id: categoryId ?? undefined },
+    })
   }
   productBySku(code: string) {
     return this.request<{ data: Product }>('GET', `products/sku/${encodeURIComponent(code)}`)
@@ -193,6 +243,9 @@ export class Api {
   // Clientes
   customers(search: string) {
     return this.request<{ data: Customer[] }>('GET', 'customers', { query: { search } })
+  }
+  createCustomer(body: { name: string; cpf?: string | null; phone?: string | null }) {
+    return this.request<Customer>('POST', 'customers', { body })
   }
 
   // Vendas
