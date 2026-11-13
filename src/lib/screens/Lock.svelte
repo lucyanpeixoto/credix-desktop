@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
   import type { Seller } from '../api'
+  import ConnectionBadge from '../components/ConnectionBadge.svelte'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
   import Logo from '../ui/Logo.svelte'
@@ -101,6 +102,7 @@
         <span>Credix PDV · {session.info?.terminal.name ?? ''}</span>
       </div>
     </div>
+    <ConnectionBadge dark />
     <div class="clock">
       <strong>{time}</strong>
       <span>{date}</span>
@@ -172,6 +174,9 @@
     height: 100%;
     display: grid;
     grid-template-columns: 380px 1fr;
+  }
+  aside > :global(.conn) {
+    align-self: flex-start;
   }
   aside {
     background: var(--brand);

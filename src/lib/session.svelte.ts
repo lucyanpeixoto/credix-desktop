@@ -1,4 +1,4 @@
-import { Api, type Seller, type TerminalInfo } from './api'
+import { Api, type CashState, type Seller, type TerminalInfo } from './api'
 import { loadSettings, saveSettings, type Settings } from './settings'
 
 const TOKEN_KEY = 'credix-desktop.terminal-token'
@@ -41,12 +41,21 @@ class Session {
   /** Operações que não podem ser interrompidas pelo bloqueio (Pix aguardando). */
   busy = $state(0)
 
+  /** Conexão com o servidor do Credix (não só "tem internet"). */
+  online = $state(true)
+  lastCheck = $state<number | null>(null)
+
+  /** Caixa (abertura/fechamento), quando a loja usa. */
+  cash = $state<CashState | null>(null)
+
   api = $derived(
     new Api(
       this.settings.serverUrl,
       () => ({ token: this.token, sellerId: this.seller?.id ?? null, pin: this.pin }),
       () => this.unpair(),
       () => this.lock(),
+      (ok) => this.setOnline(ok),
+      () => this.loadCash(),
     ),
   )
 
@@ -54,6 +63,36 @@ class Session {
   company = $derived(this.info?.company ?? null)
   pixOnline = $derived(this.info?.company.pix_online ?? false)
   lockMinutes = $derived(Math.max(1, this.info?.terminal.lock_minutes ?? 5))
+  /** A loja usa abertura de caixa e ele está fechado: precisa abrir para vender. */
+  needsCashOpen = $derived(!!this.cash?.enabled && !this.cash?.session)
+
+  private setOnline(ok: boolean) {
+    this.online = ok
+    this.lastCheck = Date.now()
+  }
+
+  /** Confere se o servidor responde (rota /up do Laravel), com limite de 5 s. */
+  async ping() {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 5000)
+    try {
+      const res = await fetch(`${this.settings.serverUrl.replace(/\/+$/, '')}/up`, { signal: ctrl.signal, cache: 'no-store' })
+      this.setOnline(res.ok || res.status < 500)
+    } catch {
+      this.setOnline(false)
+    } finally {
+      clearTimeout(t)
+    }
+  }
+
+  async loadCash() {
+    if (!this.seller) return
+    try {
+      this.cash = await this.api.cash()
+    } catch {
+      // Sem conexão: mantém o último estado conhecido.
+    }
+  }
 
   updateSettings(next: Settings) {
     this.settings = { ...next }
@@ -93,11 +132,13 @@ class Session {
     this.pin = pin
     this.seller = res.seller
     this.touch()
+    await this.loadCash()
   }
 
   lock() {
     this.seller = null
     this.pin = null
+    this.cash = null
   }
 
   touch() {

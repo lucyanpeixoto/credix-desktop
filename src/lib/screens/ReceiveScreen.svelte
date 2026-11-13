@@ -183,6 +183,7 @@
     const name = customer?.name ?? ''
     done = { receipt, customer: name }
     modal = 'done'
+    session.loadCash()
     customer = null
     data = null
     resetForm()
