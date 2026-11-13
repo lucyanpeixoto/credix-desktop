@@ -221,7 +221,33 @@ export class Api {
   async request<T>(
     method: string,
     path: string,
-    opts: { query?: Record<string, unknown>; body?: unknown; seller?: boolean } = {},
+    opts: { query?: Record<string, unknown>; body?: unknown; seller?: boolean; key?: string } = {},
+  ): Promise<T> {
+    // Com chave de idempotência é seguro repetir sozinho: o Credix não grava duas vezes.
+    const tries = opts.key ? 3 : 1
+    for (let i = 1; ; i++) {
+      try {
+        return await this.send<T>(method, path, opts)
+      } catch (e) {
+        const retry = e instanceof ApiError && (e.status === 0 || e.code === 'idempotency_in_progress')
+        if (!retry || i >= tries) {
+          if (opts.key && e instanceof ApiError && e.status === 0) {
+            throw new ApiError(
+              'Sem conexão: não deu para confirmar se foi gravado. Tente de novo sem mudar nada, que não duplica.',
+              0,
+            )
+          }
+          throw e
+        }
+        await new Promise((r) => setTimeout(r, 1500))
+      }
+    }
+  }
+
+  private async send<T>(
+    method: string,
+    path: string,
+    opts: { query?: Record<string, unknown>; body?: unknown; seller?: boolean; key?: string },
   ): Promise<T> {
     const c = this.creds()
     const headers: Record<string, string> = { Accept: 'application/json' }
@@ -231,18 +257,24 @@ export class Api {
       headers['X-Pdv-Seller'] = c.sellerId
       headers['X-Pdv-Pin'] = c.pin
     }
+    if (opts.key) headers['Idempotency-Key'] = opts.key
 
     let res: Response
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 30_000)
     try {
       res = await fetch(this.url(path, opts.query), {
         method,
         headers,
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        signal: ctrl.signal,
       })
     } catch {
+      clearTimeout(timer)
       this.onNetwork?.(false)
       throw new ApiError('Sem conexão com o servidor. Confira a internet e tente de novo.', 0)
     }
+    clearTimeout(timer)
     this.onNetwork?.(true)
 
     const data = await res.json().catch(() => null)
@@ -286,9 +318,10 @@ export class Api {
   openCash(openingAmount: number) {
     return this.request<{ session: CashSession }>('POST', 'cash/open', { body: { opening_amount: openingAmount } })
   }
-  cashMovement(type: 'sangria' | 'suprimento', amount: number, reason: string | null) {
+  cashMovement(type: 'sangria' | 'suprimento', amount: number, reason: string | null, key?: string) {
     return this.request<{ movement: CashMovement; session: CashSession }>('POST', 'cash/movements', {
       body: { type, amount, reason },
+      key,
     })
   }
   closeCash(countedCash: number, notes: string | null) {
@@ -312,13 +345,13 @@ export class Api {
   customers(search: string) {
     return this.request<{ data: Customer[] }>('GET', 'customers', { query: { search } })
   }
-  createCustomer(body: { name: string; cpf?: string | null; phone?: string | null }) {
-    return this.request<Customer>('POST', 'customers', { body })
+  createCustomer(body: { name: string; cpf?: string | null; phone?: string | null }, key?: string) {
+    return this.request<Customer>('POST', 'customers', { body, key })
   }
 
   // Vendas
-  createSale(body: Record<string, unknown>) {
-    return this.request<Sale & { pix: PixCharge | null }>('POST', 'sales', { body })
+  createSale(body: Record<string, unknown>, key?: string) {
+    return this.request<Sale & { pix: PixCharge | null }>('POST', 'sales', { body, key })
   }
   sale(id: string) {
     return this.request<Sale>('GET', `sales/${id}`)
@@ -328,13 +361,13 @@ export class Api {
   receivable(customerId: string, query: { amount?: number; installment_ids?: string[]; waive_surcharge?: boolean } = {}) {
     return this.request<Receivable>('GET', `customers/${customerId}/receivable`, { query })
   }
-  receive(body: Record<string, unknown>) {
-    return this.request<Receipt>('POST', 'receipts', { body })
+  receive(body: Record<string, unknown>, key?: string) {
+    return this.request<Receipt>('POST', 'receipts', { body, key })
   }
 
   // Pix online
-  createPix(body: Record<string, unknown>) {
-    return this.request<PixCharge>('POST', 'pix-charges', { body })
+  createPix(body: Record<string, unknown>, key?: string) {
+    return this.request<PixCharge>('POST', 'pix-charges', { body, key })
   }
   pix(id: string) {
     return this.request<PixCharge>('GET', `pix-charges/${id}`)

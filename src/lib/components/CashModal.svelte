@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import type { CashSession } from '../api'
+  import { Attempt } from '../attempt'
   import { fmt, parseMoney } from '../money'
   import { printCashClose, printMovement, type PrintResult } from '../print'
   import { printerReady } from '../printer'
@@ -20,6 +21,7 @@
   let error = $state('')
   let print = $state<PrintResult | null>(null)
   let closed = $state<CashSession | null>(null)
+  const attempt = new Attempt()
 
   const cash = $derived(session.cash?.session ?? null)
   const sum = $derived(cash?.summary ?? null)
@@ -45,7 +47,9 @@
     saving = true
     error = ''
     try {
-      const res = await session.api.cashMovement(view, value, reason.trim() || null)
+      const why = reason.trim() || null
+      const res = await session.api.cashMovement(view, value, why, attempt.keyFor([view, value, why]))
+      attempt.reset()
       await session.loadCash()
       const p = printerReady(session.settings) ? await printMovement(res.movement) : null
       go('summary')

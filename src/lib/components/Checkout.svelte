@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Customer, PixCharge, Sale } from '../api'
+  import { Attempt } from '../attempt'
   import { splitInstallments, type CartItem } from '../cart'
   import { addDaysIso, fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, todayIso } from '../money'
   import { session } from '../session.svelte'
@@ -47,6 +48,8 @@
   let pickingCustomer = $state(false)
   let pix = $state<PixCharge | null>(null)
   let pendingSale: Sale | null = null
+  // Uma chave por venda: repetir o Confirmar depois de uma queda não grava duas vezes.
+  const attempt = new Attempt()
 
   const cash = $derived(parseMoney(tendered))
   const change = $derived(payment === 'dinheiro' && cash > total ? round2(cash - total) : 0)
@@ -90,7 +93,7 @@
       })
     }
     try {
-      const sale = await session.api.createSale(body)
+      const sale = await session.api.createSale(body, attempt.keyFor(body))
       if (sale.pix) {
         pendingSale = sale
         pix = sale.pix
@@ -117,6 +120,8 @@
   function pixCancelled(reason: string) {
     pix = null
     pendingSale = null
+    // A venda do Pix foi cancelada: a próxima tentativa é uma venda nova.
+    attempt.reset()
     error = `${reason} A venda foi cancelada e o estoque voltou. Escolha outra forma ou gere o Pix de novo.`
   }
 
