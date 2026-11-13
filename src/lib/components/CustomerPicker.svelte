@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Customer } from '../api'
+  import { Attempt } from '../attempt'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
   import Modal from './Modal.svelte'
@@ -18,6 +19,7 @@
   let creating = $state(false)
   let form = $state({ name: '', cpf: '', phone: '' })
   let saving = $state(false)
+  const attempt = new Attempt()
 
   function onInput() {
     clearTimeout(timer)
@@ -78,11 +80,12 @@
     saving = true
     error = ''
     try {
-      const c = await session.api.createCustomer({
+      const body = {
         name: form.name.trim(),
         cpf: form.cpf.replace(/\D/g, '') || null,
         phone: form.phone.replace(/\D/g, '') || null,
-      })
+      }
+      const c = await session.api.createCustomer(body, attempt.keyFor(body))
       onpick(c)
     } catch (err) {
       error = (err as Error).message

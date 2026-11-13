@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import type { Customer, PixCharge, Receipt, Receivable } from '../api'
+  import { Attempt } from '../attempt'
   import CustomerPicker from '../components/CustomerPicker.svelte'
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
@@ -38,6 +39,9 @@
   let modal = $state<'' | 'customer' | 'done'>('')
   let done = $state<{ receipt: Receipt; customer: string; print?: PrintResult } | null>(null)
   let copied = $state(false)
+
+  // Uma chave por recebimento: repetir depois de uma queda não baixa as parcelas duas vezes.
+  const attempt = new Attempt()
 
   let previewTimer: ReturnType<typeof setTimeout> | undefined
   let seq = 0
@@ -163,14 +167,14 @@
     }
     try {
       if (usePixOnline) {
-        pix = await session.api.createPix(common)
+        pix = await session.api.createPix(common, attempt.keyFor(['pix', common]))
       } else {
-        const receipt = await session.api.receive({
+        const body = {
           ...common,
           methods: rows.map((r, i) => ({ type: r.type, amount: rowAmounts[i] })),
           cash_tendered: cashAmount > 0 && tenderedInput.trim() ? tendered : null,
-        })
-        finish(receipt)
+        }
+        finish(await session.api.receive(body, attempt.keyFor(body)))
       }
     } catch (e) {
       error = (e as Error).message
@@ -181,6 +185,7 @@
 
   async function finish(receipt: Receipt) {
     const name = customer?.name ?? ''
+    attempt.reset()
     done = { receipt, customer: name }
     modal = 'done'
     session.loadCash()
@@ -197,6 +202,7 @@
     pix = null
     if (c.receipt) finish(c.receipt)
     else {
+      attempt.reset()
       error = 'Pix pago. O recebimento está sendo registrado; confira o cliente em instantes.'
       if (customer) loadCustomer(customer)
     }
@@ -431,6 +437,7 @@
     onpaid={pixPaid}
     oncancelled={(reason) => {
       pix = null
+      attempt.reset()
       error = reason
     }}
   />
