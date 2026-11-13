@@ -8,9 +8,9 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 
 **Venda** (`F1`)
 - Leitor de código de barras (código exato) e busca por nome/SKU; `3*código` lança 3 unidades
-- Carrinho com quantidade, item avulso (`F4`), desconto em R$ ou % (`F7`)
-- Cliente (`F6`) e vendedor
-- Pagamento (`F10`): dinheiro com troco, Pix, débito, crédito, **Pix com QR** (Mercado Pago, se a loja usa) e **crediário** (parcelas, intervalo, 1º vencimento, entrada)
+- Grade de produtos por categoria, carrinho com quantidade, item avulso (`F6`), desconto em R$ ou % (`F7`)
+- Cliente (`F4`), com **cadastro rápido** (nome, CPF, telefone) se ainda não existir
+- Pagamento (`F9`): dinheiro com troco, Pix, débito, crédito, **Pix com QR** (Mercado Pago, se a loja usa) e **crediário** (parcelas, intervalo, 1º vencimento, entrada)
 
 **Receber** (`F2`)
 - Busca o cliente e mostra as parcelas em aberto com juros/multa do dia
@@ -24,16 +24,27 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 
 Todas as regras (preço, estoque, parcelas, juros, permissões) continuam no servidor: o PDV só envia o pedido e mostra o resultado.
 
+## Conexão com a loja e PIN
+
+1. No Credix web, o dono ou gerente vai em **Configurações › Terminais PDV**, cria o terminal (ex.: "Caixa 01") e recebe um código de 8 letras (vale 15 minutos, uma vez).
+2. No computador do caixa, o Credix PDV pede esse código uma única vez. O computador fica conectado até alguém desconectar (no web, ou no desktop com PIN de dono/gerente).
+3. Ao abrir o app, e depois de X minutos sem uso (definido por terminal no web), aparece a tela **Quem vai vender?**: escolhe o nome e digita o **PIN de 4 dígitos** (cadastrado em Usuários no web). Tudo o que fizer sai no nome dessa pessoa. `F11` troca de vendedor na hora.
+
+Dono, gerente e vendedor aparecem todos na lista: no caixa, todo mundo vende. Desconto e dispensa de juros/multa ficam liberados no caixa.
+
+O PDV usa a API `/api/pdv` do Credix (token do terminal + vendedor e PIN em cada chamada).
+
 ## Atalhos
 
 | Tecla | Ação |
 |---|---|
 | `F1` / `F2` | Venda / Receber |
 | `F3` | Foco na busca |
-| `F4` | Item avulso |
-| `F6` | Cliente |
+| `F4` | Cliente |
+| `F6` | Item avulso |
 | `F7` | Desconto |
-| `F10` | Finalizar / confirmar |
+| `F9` | Finalizar / confirmar |
+| `F11` | Trocar vendedor (bloqueia o caixa) |
 | `Ctrl+Del` | Cancelar a venda em andamento |
 | `F12` | Configurações |
 | `1`–`6` | Forma de pagamento (na finalização) |
@@ -54,7 +65,7 @@ npm run check        # checagem de tipos
 
 Só a interface no navegador (sem impressão): `npm run dev`.
 
-O servidor padrão é `https://pdv.lucyan.dev`; dá para trocar na tela de login ou em Configurações.
+O servidor padrão é `https://pdv.lucyan.dev`; dá para trocar na tela de conexão do caixa.
 
 ## Instaladores
 
@@ -76,9 +87,9 @@ Isso cria um release em rascunho com o `.exe`/`.msi` (Windows) e o `.dmg` (macOS
 ```
 src/
   App.svelte               abas, atalhos globais
-  lib/api.ts               cliente da API do Credix (token Sanctum)
-  lib/session.svelte.ts    login, usuário e configurações
-  lib/screens/             Login, Venda, Receber
+  lib/api.ts               cliente da API /api/pdv do Credix
+  lib/session.svelte.ts    terminal pareado, vendedor do PIN, bloqueio e configurações
+  lib/screens/             Conexão (pareamento), PIN, Venda, Receber
   lib/components/          Checkout, Pix, cliente, configurações, modal
   lib/escpos.ts            monta o cupom (ESC/POS)
   lib/printer.ts           cupons de venda/recebimento e envio
@@ -91,3 +102,4 @@ src-tauri/src/printer.rs   envio cru para impressora (TCP, spooler do Windows, C
 - Ícone próprio (`npx tauri icon caminho/logo.png`)
 - Atualização automática (`tauri-plugin-updater`)
 - Abertura e fechamento de caixa
+- Guardar o token do terminal no cofre do sistema (Credential Manager / Keychain) em vez do armazenamento do app

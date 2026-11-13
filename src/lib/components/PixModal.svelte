@@ -82,10 +82,15 @@
   }
 
   onMount(() => {
+    // Enquanto o Pix aguarda, o caixa não bloqueia por inatividade.
+    session.busy++
     poll = setInterval(check, 3000)
     tick = setInterval(() => (now = Date.now()), 1000)
   })
-  onDestroy(stop)
+  onDestroy(() => {
+    stop()
+    session.busy = Math.max(0, session.busy - 1)
+  })
 </script>
 
 <Modal title="Pagamento com Pix" onclose={cancel} width="460px">
@@ -114,8 +119,9 @@
     gap: 12px;
   }
   .amount {
-    font-size: 30px;
-    font-weight: 700;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
   }
   img {
     width: 260px;

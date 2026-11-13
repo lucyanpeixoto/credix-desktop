@@ -11,8 +11,6 @@
     items,
     discount,
     customer,
-    sellerId,
-    notes,
     oncustomer,
     ondone,
     onclose,
@@ -20,8 +18,6 @@
     items: CartItem[]
     discount: number
     customer: Customer | null
-    sellerId: string | null
-    notes: string
     oncustomer: (c: Customer) => void
     ondone: (sale: Sale, cashTendered: number | undefined) => void
     onclose: () => void
@@ -77,9 +73,7 @@
     const body: Record<string, unknown> = {
       payment_type: payment,
       customer_id: customer?.id ?? null,
-      seller_id: sellerId,
       discount: discount || null,
-      notes: notes.trim() || null,
       items: items.map((i) =>
         i.product_id
           ? { product_id: i.product_id, quantity: i.quantity }
@@ -131,7 +125,7 @@
     const target = e.target as HTMLElement
     const typing = target?.tagName === 'INPUT' || target?.tagName === 'SELECT'
     const enterSubmits = typing ? target.dataset.submit !== undefined : target?.tagName !== 'BUTTON'
-    if (e.key === 'F10' || (e.key === 'Enter' && enterSubmits)) {
+    if (e.key === 'F9' || (e.key === 'Enter' && enterSubmits)) {
       e.preventDefault()
       confirm()
       return
@@ -155,7 +149,7 @@
   <div class="options">
     {#each options as opt, i (opt)}
       <button class:selected={payment === opt} onclick={() => (payment = opt)}>
-        {PAYMENT_LABELS[opt]}<kbd>{i + 1}</kbd>
+        <span>{PAYMENT_LABELS[opt]}</span><kbd>{i + 1}</kbd>
       </button>
     {/each}
   </div>
@@ -167,10 +161,7 @@
         <!-- svelte-ignore a11y_autofocus -->
         <input bind:value={tendered} inputmode="decimal" placeholder={fmt(total)} autofocus data-submit />
       </label>
-      <div class="change">
-        <span class="muted">Troco</span>
-        <strong>{fmt(change)}</strong>
-      </div>
+      <div class="money-box"><span>Troco</span><strong>{fmt(change)}</strong></div>
     </div>
   {:else if payment === 'pix_online'}
     <p class="muted">Ao confirmar, o QR Code aparece para o cliente pagar. A venda só fecha quando o Pix cair.</p>
@@ -217,8 +208,8 @@
 
   {#snippet footer()}
     <button onclick={onclose}>Voltar</button>
-    <button class="success big" onclick={confirm} disabled={saving || !!problem}>
-      {saving ? 'Gravando…' : payment === 'pix_online' ? 'Gerar Pix' : 'Confirmar venda'}<kbd>F10</kbd>
+    <button class="primary big" onclick={confirm} disabled={saving || !!problem}>
+      {saving ? 'Gravando…' : payment === 'pix_online' ? 'Gerar Pix' : 'Confirmar venda'}<kbd>F9</kbd>
     </button>
   {/snippet}
 </Modal>
@@ -243,27 +234,26 @@
     justify-content: space-between;
     align-items: baseline;
   }
+  .total span {
+    font-size: 14px;
+    font-weight: 600;
+  }
   .total strong {
-    font-size: 34px;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
   }
   .options {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
   }
-  .options button.selected {
-    background: #eef4ff;
-    border-color: var(--brand);
-    color: var(--brand);
-  }
-  .change {
-    display: grid;
-    align-content: end;
-    justify-items: end;
-  }
-  .change strong {
-    font-size: 26px;
-    color: var(--ok);
+  .options button {
+    height: 52px;
+    border-radius: 14px;
+    justify-content: space-between;
+    font-weight: 700;
   }
   .grid3 {
     display: grid;

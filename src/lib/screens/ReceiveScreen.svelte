@@ -9,6 +9,7 @@
   import { printReceipt, type PrintResult } from '../print'
   import { printerReady } from '../printer'
   import { session } from '../session.svelte'
+  import Icon from '../ui/Icon.svelte'
 
   let { active }: { active: boolean } = $props()
 
@@ -138,6 +139,14 @@
     rows = rows.filter((_, j) => j !== i)
   }
 
+  /** Dias até o vencimento (0 = hoje). */
+  function daysTo(iso: string): number {
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+    const due = new Date(y, m - 1, d).getTime()
+    const t = new Date()
+    return Math.round((due - new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()) / 86_400_000)
+  }
+
   const paidPreview = (id: string) => data?.preview.rows.find((r) => r.installment_id === id)
 
   async function confirm() {
@@ -216,10 +225,10 @@
       return
     }
     if (modalStack.open) return
-    if (e.key === 'F6' || (e.key === 'F3' && !customer)) {
+    if (e.key === 'F4' || (e.key === 'F3' && !customer)) {
       e.preventDefault()
       modal = 'customer'
-    } else if (e.key === 'F10') {
+    } else if (e.key === 'F9') {
       e.preventDefault()
       confirm()
     }
@@ -237,15 +246,24 @@
   <section class="panel left">
     <header class="row">
       {#if customer}
-        <div>
+        <span class="avatar big">{customer.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}</span>
+        <div class="who">
           <h2>{customer.name}</h2>
-          <span class="muted small">{customer.cpf_formatted ?? ''} {customer.phone_formatted ?? ''}</span>
+          <span class="muted small">
+            {[customer.cpf_formatted, customer.phone_formatted, customer.code ? `#${customer.code}` : null].filter(Boolean).join(' · ')}
+          </span>
         </div>
+        {#if data}
+          <div class="due">
+            <span>Devido hoje</span>
+            <strong>{fmt(data.total_due)}</strong>
+          </div>
+        {/if}
       {:else}
-        <h2 class="muted">Escolha o cliente</h2>
+        <span class="avatar big"><Icon name="user" size={22} /></span>
+        <h2 class="muted who">Escolha o cliente</h2>
       {/if}
-      <span class="spacer"></span>
-      <button onclick={() => (modal = 'customer')}>{customer ? 'Trocar cliente' : 'Buscar cliente'}<kbd>F6</kbd></button>
+      <button onclick={() => (modal = 'customer')}>{customer ? 'Trocar cliente' : 'Buscar cliente'} <kbd>F4</kbd></button>
     </header>
 
     {#if loading}
@@ -268,7 +286,9 @@
                   <td>{i.is_down_payment ? 'Entrada' : `${i.installment_number}ª`}</td>
                   <td>
                     {fmtDate(i.due_date)}
-                    {#if i.days_late > 0}<span class="badge late">{i.days_late}d atraso</span>{/if}
+                    {#if i.days_late > 0}<span class="badge late">{i.days_late}d atraso</span>
+                    {:else if daysTo(i.due_date) <= 7}<span class="badge soon">vence em {daysTo(i.due_date)}d</span>
+                    {:else}<span class="badge">em dia</span>{/if}
                   </td>
                   <td class="num">{fmt(i.principal)}</td>
                   <td class="num">{i.surcharge ? fmt(i.surcharge) : '—'}</td>
@@ -355,7 +375,7 @@
         {#if cashAmount > 0}
           <div class="grid2">
             <label>Valor entregue <input bind:value={tenderedInput} inputmode="decimal" placeholder={fmt(cashAmount)} /></label>
-            <div class="change"><span class="muted small">Troco</span><strong>{fmt(change)}</strong></div>
+            <div class="money-box"><span>Troco</span><strong>{fmt(change)}</strong></div>
           </div>
         {/if}
       {:else if usePixOnline}
@@ -368,8 +388,8 @@
     {#if problem && data}<div class="alert warn">{problem}</div>{/if}
     {#if error}<div class="alert">{error}</div>{/if}
 
-    <button class="success big" disabled={!data || !!problem || saving} onclick={confirm}>
-      {saving ? 'Gravando…' : usePixOnline ? 'Gerar Pix' : 'Confirmar recebimento'}<kbd>F10</kbd>
+    <button class="primary big" disabled={!data || !!problem || saving} onclick={confirm}>
+      {saving ? 'Gravando…' : usePixOnline ? 'Gerar Pix' : 'Confirmar recebimento'}<kbd>F9</kbd>
     </button>
   </aside>
 </div>
@@ -418,50 +438,115 @@
 <style>
   .screen {
     height: 100%;
-    display: grid;
-    grid-template-columns: 1fr 380px;
-    gap: 14px;
-    padding: 14px;
+    display: flex;
     min-height: 0;
   }
   .left {
+    flex: 1;
+    min-width: 0;
     display: grid;
     grid-template-rows: auto 1fr auto;
+    margin: 20px 24px;
     min-height: 0;
+    overflow: hidden;
   }
   .left > header {
-    padding: 14px;
-    border-bottom: 1px solid var(--line);
+    padding: 16px;
+    gap: 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .avatar.big {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    font-size: 16px;
+  }
+  .who {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
   }
   h2 {
-    font-size: 20px;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .due {
+    display: grid;
+    justify-items: end;
+  }
+  .due span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .due strong {
+    font-size: 22px;
+    font-weight: 800;
   }
   .table {
     overflow: auto;
     min-height: 0;
   }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  td .badge {
+    margin-left: 6px;
+  }
   tbody tr {
     cursor: pointer;
   }
-  tbody tr.hit {
-    background: #f0f7f3;
+  tbody tr:hover {
+    background: #f8fafc;
   }
-  input[type='checkbox'] {
-    width: 18px;
-    height: 18px;
+  tbody tr.hit {
+    background: var(--brand-50);
+  }
+  td.num:last-child {
+    color: var(--ok);
+    font-weight: 800;
   }
   .pad {
-    padding: 14px;
+    padding: 14px 16px;
+  }
+  footer.pad {
+    border-top: 1px solid var(--line-soft);
   }
   .right {
-    display: grid;
-    gap: 12px;
-    align-content: start;
+    width: 420px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    background: #fff;
+    border-left: 1px solid var(--line);
     overflow: auto;
     min-height: 0;
   }
+  .right > .panel {
+    border: 0;
+    padding: 0;
+  }
   .box {
-    padding: 14px;
     display: grid;
     gap: 10px;
   }
@@ -469,55 +554,54 @@
     display: flex;
     gap: 8px;
     align-items: center;
-    color: var(--ink);
-    font-size: 14px;
-  }
-  .check input {
-    width: auto;
+    color: var(--ink-2);
+    font-size: 13px;
+    font-weight: 600;
   }
   .sum {
     display: grid;
-    gap: 4px;
-    font-size: 14px;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
   }
   .grand {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--line-soft);
     padding-top: 10px;
-    margin-top: 6px;
+    margin-top: 4px;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 700;
   }
   .grand strong {
-    font-size: 30px;
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1;
   }
   .methods {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
-  .methods .selected {
-    background: #eef4ff;
-    border-color: var(--brand);
-    color: var(--brand);
+  .methods button {
+    height: 48px;
+    font-weight: 700;
   }
   .link {
+    height: auto;
     padding: 0;
     justify-self: start;
     color: var(--brand);
-  }
-  .change {
-    display: grid;
-    align-content: end;
-    justify-items: end;
-  }
-  .change strong {
-    font-size: 22px;
-    color: var(--ok);
+    font-weight: 700;
+    font-size: 13px;
   }
   .big {
-    padding: 16px;
-    font-size: 18px;
+    margin-top: auto;
   }
   .done {
     display: grid;
@@ -526,15 +610,14 @@
   .troco {
     text-align: center;
     padding: 12px;
-    border-radius: 8px;
+    border-radius: 14px;
     background: var(--ok-bg);
     color: var(--ok);
+    font-weight: 700;
   }
   .troco strong {
     display: block;
     font-size: 30px;
-  }
-  .small {
-    font-size: 12px;
+    font-weight: 800;
   }
 </style>

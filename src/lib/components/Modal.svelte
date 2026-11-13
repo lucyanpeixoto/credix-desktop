@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte'
+  import Icon from '../ui/Icon.svelte'
   import { modalStack } from './modalStack'
 
   let {
@@ -30,7 +31,7 @@
   <div class="modal panel" style:width role="dialog" aria-modal="true" aria-label={title}>
     <header>
       <h2>{title}</h2>
-      <button class="ghost" onclick={onclose} aria-label="Fechar">✕<kbd>Esc</kbd></button>
+      <button class="ghost close" onclick={onclose} aria-label="Fechar"><Icon name="x" size={16} /> <kbd>Esc</kbd></button>
     </header>
     <div class="body">{@render children()}</div>
     {#if footer}<footer>{@render footer()}</footer>{/if}
@@ -47,6 +48,7 @@
     z-index: 50;
   }
   .modal {
+    border-radius: 24px;
     max-width: calc(100vw - 32px);
     max-height: calc(100vh - 32px);
     display: flex;
@@ -57,21 +59,27 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--line);
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--line-soft);
   }
   h2 {
     font-size: 18px;
+    font-weight: 800;
+  }
+  .close {
+    height: 34px;
+    padding: 0 8px;
+    color: var(--muted);
   }
   .body {
-    padding: 18px;
+    padding: 22px;
     overflow: auto;
     display: grid;
     gap: 14px;
   }
   footer {
-    padding: 14px 18px;
-    border-top: 1px solid var(--line);
+    padding: 16px 22px;
+    border-top: 1px solid var(--line-soft);
     display: flex;
     gap: 10px;
     justify-content: flex-end;
