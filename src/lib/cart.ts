@@ -1,9 +1,11 @@
-import type { Product } from './api'
+import type { Product, ProductVariant } from './api'
 import { round2 } from './money'
 
 export interface CartItem {
   key: string
   product_id: string | null
+  variant_id?: string | null
+  variant_label?: string | null
   name: string
   sku: string | null
   unit_price: number
@@ -13,8 +15,17 @@ export interface CartItem {
 let n = 0
 export const newKey = (): string => `i${Date.now().toString(36)}${(n++).toString(36)}`
 
-export function fromProduct(p: Product, quantity = 1): CartItem {
-  return { key: newKey(), product_id: p.id, name: p.name, sku: p.sku, unit_price: p.price, quantity }
+export function fromProduct(p: Product, quantity = 1, variant: ProductVariant | null = null): CartItem {
+  return {
+    key: newKey(),
+    product_id: p.id,
+    variant_id: variant?.id ?? null,
+    variant_label: variant?.label ?? null,
+    name: p.name,
+    sku: p.sku,
+    unit_price: p.price,
+    quantity,
+  }
 }
 
 export const subtotalOf = (items: CartItem[]): number =>
