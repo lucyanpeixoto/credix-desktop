@@ -25,7 +25,9 @@
 
   const cash = $derived(session.cash?.session ?? null)
   const sum = $derived(cash?.summary ?? null)
-  const visibleMethods = $derived((sum?.methods ?? []).filter((m) => m.count > 0 || m.type === 'dinheiro'))
+  // Às cegas, o dinheiro (e o esperado) só aparecem depois de fechar.
+  const blind = $derived(sum?.expected_cash === null)
+  const visibleMethods = $derived((sum?.methods ?? []).filter((m) => m.total !== null && (m.count > 0 || m.type === 'dinheiro')))
   const time = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
   onMount(() => session.loadCash())
@@ -143,7 +145,11 @@
       {#if sum.sangria > 0}<div class="row"><span class="muted">Sangrias</span><span class="spacer"></span><span class="red">− {fmt(sum.sangria)}</span></div>{/if}
       {#if sum.crediario_sold > 0}<div class="row faint"><span>Vendido no crediário (não entra no caixa)</span><span class="spacer"></span>{fmt(sum.crediario_sold)}</div>{/if}
     </div>
-    <div class="expected"><span>Dinheiro na gaveta</span><strong>{fmt(sum.expected_cash)}</strong></div>
+    {#if blind}
+      <div class="expected blind"><span>Fechamento às cegas</span><small>O dinheiro esperado na gaveta aparece depois que você contar e fechar o caixa.</small></div>
+    {:else}
+      <div class="expected"><span>Dinheiro na gaveta</span><strong>{fmt(sum.expected_cash)}</strong></div>
+    {/if}
     {#if cash.movements.length}
       <div class="moves">
         {#each cash.movements as m (m.id)}
@@ -160,7 +166,7 @@
     <form id="move" class="form" onsubmit={move}>
       <p class="muted">
         {view === 'sangria'
-          ? `Dinheiro que sai da gaveta (cofre, depósito). Na gaveta agora: ${fmt(sum.expected_cash)}.`
+          ? `Dinheiro que sai da gaveta (cofre, depósito).${sum.expected_cash === null ? '' : ` Na gaveta agora: ${fmt(sum.expected_cash)}.`}`
           : 'Dinheiro que entra na gaveta para troco.'}
       </p>
       <!-- svelte-ignore a11y_autofocus -->
@@ -209,6 +215,16 @@
     background: var(--ok-bg);
     color: var(--ok);
     font-weight: 700;
+  }
+  .expected.blind {
+    display: grid;
+    gap: 2px;
+    background: var(--soft);
+    color: var(--ink-2);
+  }
+  .expected.blind small {
+    font-weight: 500;
+    color: var(--muted);
   }
   .expected strong {
     font-size: 28px;

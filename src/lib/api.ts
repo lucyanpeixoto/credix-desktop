@@ -32,17 +32,20 @@ export interface CashMethod {
   type: string
   label: string
   count: number
-  total: number
+  /** null no fechamento às cegas (dinheiro), para quem não pode ver o esperado. */
+  total: number | null
 }
 
 export interface CashSummary {
   opening: number
   methods: CashMethod[]
-  total_in: number
+  total_in: number | null
   crediario_sold: number
   sangria: number
   suprimento: number
-  expected_cash: number
+  /** null no fechamento às cegas até o caixa ser fechado. */
+  expected_cash: number | null
+  blind?: boolean
 }
 
 export interface CashMovement {
@@ -70,6 +73,7 @@ export interface CashSession {
 
 export interface CashState {
   enabled: boolean
+  can_see_expected?: boolean
   session: CashSession | null
   last_closed: { closed_at: string; counted_cash: number; closed_by: string | null } | null
 }
