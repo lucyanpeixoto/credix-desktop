@@ -105,6 +105,12 @@ export interface Installment {
   amount: number
   due_date: string
   status: string
+  status_label?: string
+  paid_amount?: number
+  remaining_amount?: number
+  is_overdue?: boolean
+  days_overdue?: number
+  notes?: string | null
 }
 
 export interface Sale {
@@ -116,9 +122,46 @@ export interface Sale {
   discount: number
   total: number
   created_at_formatted: string
-  customer: { id: string; name: string } | null
-  items?: { product_name: string; quantity: number; unit_price: number; subtotal: number }[]
+  customer: { id: string; name: string; code?: string | number | null; cpf_formatted?: string | null; phone_formatted?: string | null } | null
+  seller?: { id: string; name: string; first_name: string } | null
+  user?: { id: string; name: string; first_name: string } | null
+  total_paid?: number
+  remaining_amount?: number
+  notes?: string | null
+  items?: { product_name: string; quantity: number; unit_price: number; subtotal: number; is_custom?: boolean }[]
   installments?: Installment[]
+}
+
+export interface SaleDetail extends Sale {
+  terminal: string | null
+  public_url: string | null
+  whatsapp_message: string | null
+  customer_phone: string | null
+  receipts: {
+    id: string
+    code: string | number
+    status: string
+    total: number
+    amount_on_sale: number
+    methods: string[]
+    received_by: string | null
+    created_at: string
+  }[]
+}
+
+export interface SaleFilters {
+  date?: string
+  search?: string
+  payment_type?: string
+  status?: string
+  this_terminal?: boolean
+  page?: number
+}
+
+export interface SaleList {
+  data: Sale[]
+  summary: { count: number; total: number }
+  meta: { current_page: number; last_page: number; total: number }
 }
 
 export interface Receipt {
@@ -354,7 +397,10 @@ export class Api {
     return this.request<Sale & { pix: PixCharge | null }>('POST', 'sales', { body, key })
   }
   sale(id: string) {
-    return this.request<Sale>('GET', `sales/${id}`)
+    return this.request<SaleDetail>('GET', `sales/${id}`)
+  }
+  sales(filters: SaleFilters) {
+    return this.request<SaleList>('GET', 'sales', { query: { ...filters } })
   }
 
   // Recebimento

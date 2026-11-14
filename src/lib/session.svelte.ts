@@ -76,8 +76,10 @@ class Session {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 5000)
     try {
-      const res = await fetch(`${this.settings.serverUrl.replace(/\/+$/, '')}/up`, { signal: ctrl.signal, cache: 'no-store' })
-      this.setOnline(res.ok || res.status < 500)
+      // no-cors: o /up não libera CORS para o app; basta o servidor responder
+      // (a resposta fica opaca, mas sem internet o fetch falha).
+      await fetch(`${this.settings.serverUrl.replace(/\/+$/, '')}/up`, { signal: ctrl.signal, cache: 'no-store', mode: 'no-cors' })
+      this.setOnline(true)
     } catch {
       this.setOnline(false)
     } finally {

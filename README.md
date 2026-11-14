@@ -47,6 +47,7 @@ O PDV usa a API `/api/pdv` do Credix (token do terminal + vendedor e PIN em cada
 |---|---|
 | `F1` / `F2` | Venda / Receber |
 | `F3` | Foco na busca |
+| `F5` | Vendas (consulta) |
 | `F4` | Cliente |
 | `F6` | Item avulso |
 | `F7` | Desconto |
