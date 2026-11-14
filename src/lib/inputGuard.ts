@@ -1,5 +1,6 @@
 // Bloqueia letras nos campos de número e de dinheiro do app inteiro, ao
-// digitar e ao colar. Vale pelo tipo do campo, sem marcar campo por campo:
+// digitar, ao colar e no que chegar por acento ou autocompletar. Vale pelo
+// tipo do campo, sem marcar campo por campo:
 // - inputmode="decimal"  → dinheiro: dígitos, ponto e uma vírgula
 // - type="number"        → inteiro: só dígitos (o WebKit do macOS aceita letras)
 // - inputmode="numeric"  → documento (CPF): dígitos, ponto, traço e barra
@@ -68,7 +69,21 @@ function onPaste(e: ClipboardEvent) {
   el.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+// Rede de segurança: letra com acento (tecla morta), autocompletar ou arrastar
+// não passam pelo keydown. Limpa antes do Svelte ler o valor (fase de captura).
+function onInput(e: Event) {
+  const kind = kindOf(e.target)
+  const el = e.target as HTMLInputElement
+  if (!kind || el.type === 'number') return
+  const cleaned = clean(kind, el.value)
+  if (cleaned === el.value) return
+  const caret = Math.max(0, (el.selectionStart ?? el.value.length) - (el.value.length - cleaned.length))
+  el.value = cleaned
+  el.setSelectionRange(caret, caret)
+}
+
 export function installInputGuard() {
   document.addEventListener('keydown', onKeydown, true)
   document.addEventListener('paste', onPaste, true)
+  document.addEventListener('input', onInput, true)
 }
