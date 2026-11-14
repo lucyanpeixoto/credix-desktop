@@ -220,12 +220,32 @@
     refilter()
   }
 
+  // No WebKit do macOS o calendário só fecha quando o campo perde o foco; como
+  // o campo fica escondido, clicar fora não fechava. Fecha à mão: tira o foco
+  // e recria o campo (recriar fecha o calendário em qualquer caso).
+  let pickerOpen = false
+  let pickerKey = $state(0)
+
   function pickDate() {
+    pickerOpen = true
+    dateEl?.focus()
     try {
       dateEl?.showPicker()
     } catch {
-      dateEl?.focus()
+      // Sem showPicker: fica o foco no campo.
     }
+  }
+
+  function closePicker(e: PointerEvent) {
+    if (!pickerOpen || e.target === dateEl) return
+    pickerOpen = false
+    dateEl?.blur()
+    pickerKey++
+  }
+
+  function onDateChange() {
+    pickerOpen = false
+    refilter()
   }
 
   const dayLabel = $derived.by(() => {
@@ -242,7 +262,7 @@
   const isToday = $derived(date === todayIso())
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={keydown} onpointerdowncapture={closePicker} />
 
 <div class="screen">
   <section class="listcol">
@@ -266,7 +286,9 @@
           </button>
           <button class="nav" onclick={() => shiftDay(1)} disabled={isToday} aria-label="Próximo dia">›</button>
           {#if !isToday}<button class="today" onclick={goToday}>Hoje</button>{/if}
-          <input bind:this={dateEl} class="native" type="date" bind:value={date} max={todayIso()} onchange={refilter} tabindex="-1" aria-hidden="true" />
+          {#key pickerKey}
+            <input bind:this={dateEl} class="native" type="date" bind:value={date} max={todayIso()} onchange={onDateChange} tabindex="-1" aria-hidden="true" />
+          {/key}
         </div>
         <select bind:value={paymentType} onchange={refilter} aria-label="Forma de pagamento">
           <option value="">Todas as formas</option>
