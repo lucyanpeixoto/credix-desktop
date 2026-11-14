@@ -382,9 +382,9 @@
               </span>
             {/snippet}
             {#if p.has_variants && p.variants?.length}
-              <!-- Com grade: até 2 tamanhos/cores no card (com estoque primeiro), que já
-                   entram no carrinho; o card e o +N abrem a escolha com todas. -->
-              {@const shown = [...p.variants].sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0)).slice(0, 2)}
+              <!-- Com grade: um tamanho/cor no card (o primeiro com estoque), que já
+                   entra no carrinho; o card e o +N abrem a escolha com todas. -->
+              {@const shown = [...p.variants].sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0)).slice(0, 1)}
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="product grade" role="button" tabindex="-1" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
                 {@render body()}
