@@ -10,6 +10,9 @@ export interface Company {
   pix_online: boolean
   late_charges: boolean
   cash_control: boolean
+  /** Horário de funcionamento (HH:MM); null sem horário configurado. */
+  opening_time?: string | null
+  closing_time?: string | null
 }
 
 export interface Seller {
@@ -60,6 +63,11 @@ export interface CashMovement {
 export interface CashSession {
   id: string
   status: 'open' | 'closed'
+  /** Esquecido aberto de um dia anterior: precisa fechar antes de vender. */
+  stale?: boolean
+  /** Depois do fechamento da loja, ainda no caixa do dia: o vendedor escolhe onde lançar. */
+  after_hours?: boolean
+  business_day?: string
   opened_at: string
   opened_by: string | null
   closed_at: string | null
@@ -240,6 +248,8 @@ export interface Credentials {
   token: string | null
   sellerId: string | null
   pin: string | null
+  /** Caixa em que o vendedor escolheu lançar depois do fechamento da loja. */
+  cashConfirm?: string | null
 }
 
 /**
@@ -253,7 +263,7 @@ export class Api {
     private onUnpaired?: () => void,
     private onSellerRejected?: () => void,
     private onNetwork?: (ok: boolean) => void,
-    private onCashClosed?: () => void,
+    private onCashClosed?: (code: string) => void,
   ) {}
 
   private url(path: string, query?: Record<string, unknown>): string {
@@ -306,6 +316,7 @@ export class Api {
       headers['X-Pdv-Pin'] = c.pin
     }
     if (opts.key) headers['Idempotency-Key'] = opts.key
+    if (c.cashConfirm) headers['X-Pdv-Cash-Confirm'] = c.cashConfirm
 
     let res: Response
     const ctrl = new AbortController()
@@ -331,7 +342,7 @@ export class Api {
     const code: string | null = data?.code ?? null
     if (res.status === 401 && code === 'terminal_unpaired') this.onUnpaired?.()
     else if (res.status === 401 && code === 'seller_locked' && opts.seller !== false) this.onSellerRejected?.()
-    else if (res.status === 409 && code === 'cash_closed') this.onCashClosed?.()
+    else if (res.status === 409 && (code === 'cash_closed' || code === 'cash_stale' || code === 'cash_after_hours')) this.onCashClosed?.(code)
 
     const errors: Record<string, string[]> = data?.errors ?? {}
     const first = Object.values(errors)[0]?.[0]

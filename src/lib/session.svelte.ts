@@ -49,15 +49,27 @@ class Session {
 
   /** Caixa (abertura/fechamento), quando a loja usa. */
   cash = $state<CashState | null>(null)
+  /** Depois do fechamento da loja: caixa em que o vendedor escolheu continuar lançando. */
+  cashConfirmed = $state<string | null>(null)
+  /** O servidor pediu para escolher onde lançar (venda depois do fechamento). */
+  askAfterHours = $state(false)
 
   api = $derived(
     new Api(
       this.settings.serverUrl,
-      () => ({ token: this.token, sellerId: this.seller?.id ?? this.pendingSellerId, pin: this.pin }),
+      () => ({
+        token: this.token,
+        sellerId: this.seller?.id ?? this.pendingSellerId,
+        pin: this.pin,
+        cashConfirm: this.cashConfirmed,
+      }),
       () => this.unpair(),
       () => this.lock(),
       (ok) => this.setOnline(ok),
-      () => this.loadCash(),
+      (code) => {
+        if (code === 'cash_after_hours') this.askAfterHours = true
+        this.loadCash()
+      },
     ),
   )
 
@@ -67,6 +79,10 @@ class Session {
   lockMinutes = $derived(Math.max(1, this.info?.terminal.lock_minutes ?? 5))
   /** A loja usa abertura de caixa e ele está fechado: precisa abrir para vender. */
   needsCashOpen = $derived(!!this.cash?.enabled && !this.cash?.session)
+  /** Caixa esquecido aberto de outro dia: precisa fechar (e abrir o de hoje) para vender. */
+  needsCashClose = $derived(!!this.cash?.enabled && !!this.cash?.session?.stale)
+  /** Venda e recebimento parados até abrir ou fechar o caixa. */
+  cashBlocked = $derived(this.needsCashOpen || this.needsCashClose)
 
   private setOnline(ok: boolean) {
     this.online = ok
@@ -148,10 +164,17 @@ class Session {
     this.touch()
   }
 
+  /** Depois do fechamento: segue lançando no caixa aberto (vale para o resto da noite). */
+  keepCash() {
+    this.cashConfirmed = this.cash?.session?.id ?? null
+    this.askAfterHours = false
+  }
+
   lock() {
     this.seller = null
     this.pin = null
     this.cash = null
+    this.askAfterHours = false
   }
 
   touch() {
