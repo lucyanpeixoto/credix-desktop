@@ -99,7 +99,7 @@
       discount: discount || null,
       items: items.map((i) =>
         i.product_id
-          ? { product_id: i.product_id, quantity: i.quantity }
+          ? { product_id: i.product_id, product_variant_id: i.variant_id ?? null, quantity: i.quantity }
           : { description: i.name, unit_price: i.unit_price, quantity: i.quantity },
       ),
     }

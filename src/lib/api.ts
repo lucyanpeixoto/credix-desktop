@@ -102,6 +102,17 @@ export interface Product {
   price: number
   stock: number | null
   active: boolean
+  /** Produto com grade: a venda precisa dizer qual tamanho/cor. */
+  has_variants?: boolean
+  variants?: ProductVariant[]
+}
+
+export interface ProductVariant {
+  id: string
+  size: string | null
+  color: string | null
+  label: string
+  stock: number
 }
 
 export interface Customer {

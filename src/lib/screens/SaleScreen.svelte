@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { ApiError, type Category, type Customer, type Product, type Sale } from '../api'
+  import { ApiError, type Category, type Customer, type Product, type ProductVariant, type Sale } from '../api'
   import { fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
   import Checkout from '../components/Checkout.svelte'
   import CustomerPicker from '../components/CustomerPicker.svelte'
@@ -32,7 +32,15 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'discount' | 'total' | 'checkout' | 'done' | 'clear'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear'>('')
+  let picking = $state<{ product: Product; quantity: number } | null>(null)
+
+  function pickVariant(v: ProductVariant) {
+    const p = picking
+    picking = null
+    modal = ''
+    if (p) add(p.product, p.quantity, v)
+  }
   let custom = $state({ name: '', price: '', quantity: 1 })
   let discountInput = $state('')
   let discountPercent = $state(true)
@@ -51,7 +59,10 @@
   const subtotal = $derived(subtotalOf(items))
   const total = $derived(round2(Math.max(0, subtotal - discount)))
   const count = $derived(items.reduce((s, i) => s + i.quantity, 0))
-  const qtyById = $derived(new Map(items.filter((i) => i.product_id).map((i) => [i.product_id!, i.quantity])))
+  // Soma por produto: com grade, cada tamanho/cor é uma linha do carrinho.
+  const qtyById = $derived(
+    items.reduce((m, i) => (i.product_id ? m.set(i.product_id, (m.get(i.product_id) ?? 0) + i.quantity) : m), new Map<string, number>()),
+  )
   const searching = $derived(parseQuantityPrefix(search).term.length >= 2)
 
   const TILE = ['tile-blue', 'tile-green', 'tile-amber', 'tile-pink', 'tile-violet']
@@ -127,15 +138,22 @@
     focusSearch()
   }
 
-  function add(p: Product, quantity = 1) {
-    const existing = items.find((i) => i.product_id === p.id)
+  function add(p: Product, quantity = 1, variant: ProductVariant | null = null) {
+    // Produto com grade: pergunta o tamanho/cor antes de pôr no carrinho.
+    if (p.has_variants && !variant) {
+      if (!p.variants?.length) return say('error', `“${p.name}” está com grade, mas sem tamanho/cor cadastrado.`)
+      picking = { product: p, quantity }
+      modal = 'variant'
+      return
+    }
+    const existing = items.find((i) => i.product_id === p.id && (i.variant_id ?? null) === (variant?.id ?? null))
     if (existing) {
       existing.quantity += quantity
       items = [...items.filter((i) => i !== existing), existing]
     } else {
-      items = [...items, fromProduct(p, quantity)]
+      items = [...items, fromProduct(p, quantity, variant)]
     }
-    say('ok', `${quantity > 1 ? `${quantity}× ` : ''}${p.name}`)
+    say('ok', `${quantity > 1 ? `${quantity}× ` : ''}${p.name}${variant ? ` (${variant.label})` : ''}`)
     if (search) {
       search = ''
       loadProducts()
@@ -273,6 +291,15 @@
 
   function windowKeydown(e: KeyboardEvent) {
     if (!active) return
+    // Teclas 1–9 escolhem o tamanho/cor.
+    if (modal === 'variant' && picking && /^[1-9]$/.test(e.key)) {
+      const v = picking.product.variants?.[Number(e.key) - 1]
+      if (v) {
+        e.preventDefault()
+        pickVariant(v)
+      }
+      return
+    }
     if (modal === 'done') {
       if (e.key === 'Enter') {
         e.preventDefault()
@@ -387,7 +414,11 @@
         <div class="line">
           <div class="info">
             <strong>{item.name}</strong>
-            <span>{item.product_id ? `${fmt(item.unit_price)} un.` : `avulso · ${fmt(item.unit_price)}`}</span>
+            <span>
+              {#if item.variant_label}<b class="variant">{item.variant_label}</b> · {/if}{item.product_id
+                ? `${fmt(item.unit_price)} un.`
+                : `avulso · ${fmt(item.unit_price)}`}
+            </span>
           </div>
           <div class="stepper">
             <button onclick={() => setQty(item, item.quantity - 1)} aria-label="Diminuir"><Icon name="minus" size={16} /></button>
@@ -447,6 +478,28 @@
       <button onclick={() => (modal = '')}>Voltar</button>
       <button class="primary" type="submit" form="custom">Adicionar</button>
     {/snippet}
+  </Modal>
+{:else if modal === 'variant' && picking}
+  <Modal
+    title={picking.product.name}
+    onclose={() => {
+      picking = null
+      modal = ''
+      focusSearch()
+    }}
+    width="520px"
+  >
+    <p class="muted">Escolha o tamanho e a cor{picking.quantity > 1 ? ` (${picking.quantity} unidades)` : ''}.</p>
+    <div class="variants">
+      {#each picking.product.variants ?? [] as v, i (v.id)}
+        <!-- svelte-ignore a11y_autofocus -->
+        <button class:out={v.stock <= 0} onclick={() => pickVariant(v)} autofocus={i === 0}>
+          <strong>{v.label}</strong>
+          <small>{v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'}</small>
+          {#if i < 9}<kbd>{i + 1}</kbd>{/if}
+        </button>
+      {/each}
+    </div>
   </Modal>
 {:else if modal === 'discount'}
   <Modal title="Desconto" onclose={() => (modal = '')} width="420px">
@@ -808,6 +861,46 @@
   .info span {
     font-size: 12px;
     color: var(--muted);
+  }
+  .info .variant {
+    color: var(--brand);
+    font-weight: 700;
+  }
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .variants button {
+    position: relative;
+    height: auto;
+    min-height: 60px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .variants button strong {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .variants button small {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .variants button.out {
+    border-style: dashed;
+    opacity: 0.75;
+  }
+  .variants button.out small {
+    color: var(--danger);
+  }
+  .variants kbd {
+    position: absolute;
+    top: 6px;
+    right: 6px;
   }
   .stepper {
     display: flex;
