@@ -130,8 +130,9 @@
       <button class="icon" onclick={() => (settingsOpen = true)} aria-label="Configurações (F12)"><Icon name="gear" /></button>
     </header>
     <main>
-      {#if session.needsCashOpen}
-        <OpenCash />
+      <!-- Abrir caixa só para vender e receber; a consulta de vendas não precisa. -->
+      {#if session.needsCashOpen && tab !== 'sales'}
+        <div class="tab"><OpenCash /></div>
       {/if}
       {#key session.seller.id}
         <div class="tab" class:hidden={tab !== 'sale' || session.needsCashOpen}>
