@@ -134,6 +134,7 @@ export interface Sale {
 
 export interface SaleDetail extends Sale {
   terminal: string | null
+  can_cancel: boolean
   public_url: string | null
   whatsapp_message: string | null
   customer_phone: string | null
@@ -398,6 +399,9 @@ export class Api {
   }
   sale(id: string) {
     return this.request<SaleDetail>('GET', `sales/${id}`)
+  }
+  cancelSale(id: string, reason: string, key?: string) {
+    return this.request<SaleDetail>('POST', `sales/${id}/cancel`, { body: { reason }, key })
   }
   sales(filters: SaleFilters) {
     return this.request<SaleList>('GET', 'sales', { query: { ...filters } })
