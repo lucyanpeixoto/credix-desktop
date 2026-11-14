@@ -9,10 +9,12 @@
   import Icon from '../ui/Icon.svelte'
   import Modal from './Modal.svelte'
 
-  let { onclose }: { onclose: () => void } = $props()
-
   type View = 'summary' | 'sangria' | 'suprimento' | 'close' | 'closed'
-  let view = $state<View>('summary')
+
+  let { onclose, start = 'summary' }: { onclose: () => void; start?: View } = $props()
+
+  // svelte-ignore state_referenced_locally
+  let view = $state<View>(start)
   let amount = $state('')
   let reason = $state('')
   let counted = $state('')
@@ -29,6 +31,13 @@
   const blind = $derived(sum?.expected_cash === null)
   const visibleMethods = $derived((sum?.methods ?? []).filter((m) => m.total !== null && (m.count > 0 || m.type === 'dinheiro')))
   const time = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  // Caixa de outro dia mostra a data junto, para não parecer que abriu hoje.
+  const openedLabel = (iso: string) => {
+    const d = new Date(iso)
+    return d.toDateString() === new Date().toDateString()
+      ? `às ${time(iso)}`
+      : `em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${time(iso)}`
+  }
 
   onMount(() => session.loadCash())
 
@@ -135,7 +144,7 @@
   {:else if !cash || !sum}
     <p class="muted">Carregando caixa…</p>
   {:else if view === 'summary'}
-    <p class="muted small">Aberto às {time(cash.opened_at)} por {cash.opened_by}. O mesmo caixa aparece no Credix web.</p>
+    <p class="muted small">Aberto {openedLabel(cash.opened_at)} por {cash.opened_by}. O mesmo caixa aparece no Credix web.</p>
     <div class="rows">
       <div class="row"><span class="muted">Troco inicial</span><span class="spacer"></span>{fmt(sum.opening)}</div>
       {#each visibleMethods as m (m.type)}

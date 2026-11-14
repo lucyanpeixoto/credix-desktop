@@ -21,6 +21,7 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 **Caixa** (opcional, ligado em Terminais PDV no web)
 - Abertura com troco inicial, sangria e suprimento (com comprovante) e fechamento contando a gaveta: mostra o esperado por forma de pagamento e a diferença, e imprime o resumo
 - É o mesmo caixa do Credix web: o dono pode abrir pelo web e o vendedor continua no desktop
+- Caixa esquecido aberto de outro dia trava a venda até ser fechado. Com o horário da loja (Dados da loja, no web), o dia vira no fechamento: venda depois do horário pergunta se entra no caixa aberto ou se fecha e abre o do dia seguinte
 
 **Conexão**
 - Selo no topo (e na tela de PIN): **Online** ou **Sem conexão**, conferindo o servidor a cada 20 s. Sem conexão, vendas e recebimentos ficam pausados (ainda não há modo offline)

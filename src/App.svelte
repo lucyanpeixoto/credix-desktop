@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import AfterHoursModal from './lib/components/AfterHoursModal.svelte'
   import CashModal from './lib/components/CashModal.svelte'
   import ConnectionBadge from './lib/components/ConnectionBadge.svelte'
   import UpdateButton from './lib/components/UpdateButton.svelte'
@@ -14,6 +15,7 @@
   import ReceiveScreen from './lib/screens/ReceiveScreen.svelte'
   import SaleScreen from './lib/screens/SaleScreen.svelte'
   import SalesScreen from './lib/screens/SalesScreen.svelte'
+  import StaleCash from './lib/screens/StaleCash.svelte'
   import { session } from './lib/session.svelte'
   import Icon from './lib/ui/Icon.svelte'
   import Logo from './lib/ui/Logo.svelte'
@@ -21,6 +23,8 @@
   let tab = $state<'sale' | 'receive' | 'sales'>('sale')
   let settingsOpen = $state(false)
   let cashOpen = $state(false)
+  /** Caixa aberto direto no fechamento (venda depois do horário, "abrir o de amanhã"). */
+  let cashClosing = $state(false)
 
   onMount(() => {
     session.refresh()
@@ -50,6 +54,7 @@
   function lockNow() {
     settingsOpen = false
     cashOpen = false
+    cashClosing = false
     tab = 'sale'
     session.lock()
   }
@@ -130,16 +135,18 @@
       <button class="icon" onclick={() => (settingsOpen = true)} aria-label="Configurações (F12)"><Icon name="gear" /></button>
     </header>
     <main>
-      <!-- Abrir caixa só para vender e receber; a consulta de vendas não precisa. -->
-      {#if session.needsCashOpen && tab !== 'sales'}
+      <!-- Abrir (ou fechar o de outro dia) só para vender e receber; a consulta de vendas não precisa. -->
+      {#if session.needsCashClose && tab !== 'sales'}
+        <div class="tab"><StaleCash /></div>
+      {:else if session.needsCashOpen && tab !== 'sales'}
         <div class="tab"><OpenCash /></div>
       {/if}
       {#key session.seller.id}
-        <div class="tab" class:hidden={tab !== 'sale' || session.needsCashOpen}>
-          <SaleScreen active={tab === 'sale' && !settingsOpen && !cashOpen && !session.needsCashOpen} />
+        <div class="tab" class:hidden={tab !== 'sale' || session.cashBlocked}>
+          <SaleScreen active={tab === 'sale' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked} />
         </div>
-        <div class="tab" class:hidden={tab !== 'receive' || session.needsCashOpen}>
-          <ReceiveScreen active={tab === 'receive' && !settingsOpen && !cashOpen && !session.needsCashOpen} />
+        <div class="tab" class:hidden={tab !== 'receive' || session.cashBlocked}>
+          <ReceiveScreen active={tab === 'receive' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked} />
         </div>
         <div class="tab" class:hidden={tab !== 'sales'}>
           <SalesScreen active={tab === 'sales' && !settingsOpen && !cashOpen} />
@@ -155,6 +162,14 @@
 
 {#if cashOpen && session.seller}
   <CashModal onclose={() => (cashOpen = false)} />
+{/if}
+
+{#if cashClosing && session.seller}
+  <CashModal start="close" onclose={() => (cashClosing = false)} />
+{/if}
+
+{#if session.askAfterHours && session.seller && !cashOpen && !cashClosing}
+  <AfterHoursModal onclosecash={() => (cashClosing = true)} />
 {/if}
 
 <style>
