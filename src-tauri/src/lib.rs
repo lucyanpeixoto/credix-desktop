@@ -31,10 +31,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             use tauri::Manager;
-            // Caixa sempre ocupa a tela toda ao abrir.
+            // Caixa sempre ocupa a tela toda ao abrir. Mostra antes de maximizar:
+            // maximizar a janela ainda escondida faz o show() voltar ao tamanho
+            // normal (abria cheia e logo diminuía).
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.maximize();
                 let _ = window.show();
+                let _ = window.maximize();
                 let _ = window.set_focus();
             }
             Ok(())
