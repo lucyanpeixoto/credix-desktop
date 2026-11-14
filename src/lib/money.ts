@@ -24,17 +24,25 @@ export function fmtDate(iso: string | null | undefined): string {
   return `${d}/${m}/${y}`
 }
 
-export function todayIso(): string {
-  const d = new Date()
+function toIso(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-export function addDaysIso(days: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+export function todayIso(): string {
+  return toIso(new Date())
+}
+
+/**
+ * Vencimento da n-ésima parcela, com a regra do servidor (Installment::dueDateFor):
+ * intervalo múltiplo de 30 conta em meses, sem passar do fim do mês (31/01 → 28/02).
+ */
+export function dueDateIso(startIso: string, intervalDays: number, n: number): string {
+  const [y, m, d] = startIso.slice(0, 10).split('-').map(Number)
+  if (intervalDays % 30 !== 0) return toIso(new Date(y, m - 1, d + intervalDays * n))
+  const month = new Date(y, m - 1 + (intervalDays / 30) * n, 1)
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  return toIso(new Date(month.getFullYear(), month.getMonth(), Math.min(d, lastDay)))
 }
 
 export const PAYMENT_LABELS: Record<string, string> = {

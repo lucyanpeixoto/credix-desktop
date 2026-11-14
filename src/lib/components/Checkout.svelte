@@ -2,7 +2,7 @@
   import type { Customer, PixCharge, Sale } from '../api'
   import { Attempt } from '../attempt'
   import { splitInstallments, type CartItem } from '../cart'
-  import { addDaysIso, fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, todayIso } from '../money'
+  import { dueDateIso, fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, todayIso } from '../money'
   import { session } from '../session.svelte'
   import CustomerPicker from './CustomerPicker.svelte'
   import Modal from './Modal.svelte'
@@ -39,7 +39,7 @@
   // Crediário
   let count = $state(1)
   let days = $state(30)
-  let firstDue = $state(addDaysIso(30))
+  let firstDue = $state(dueDateIso(todayIso(), 30, 1))
   let downPayment = $state('')
   let downType = $state<'dinheiro' | 'pix' | 'debito' | 'credito' | 'pix_online'>('dinheiro')
 
@@ -54,7 +54,27 @@
   const cash = $derived(parseMoney(tendered))
   const change = $derived(payment === 'dinheiro' && cash > total ? round2(cash - total) : 0)
   const down = $derived(parseMoney(downPayment))
-  const plan = $derived(splitInstallments(round2(total - down), Math.max(1, Math.min(60, Number(count) || 1))))
+  const financed = $derived(round2(Math.max(0, total - down)))
+  const plan = $derived(splitInstallments(financed, Math.max(1, Math.min(60, Number(count) || 1))))
+  const schedule = $derived(
+    plan.map((amount, i) => ({ label: `${i + 1}/${plan.length}`, due: firstDue ? dueDateIso(firstDue, days, i) : '', amount })),
+  )
+
+  const INTERVALS: [number, string][] = [
+    [30, 'Mensal'],
+    [15, 'Quinzenal'],
+    [7, 'Semanal'],
+  ]
+
+  function setInterval(d: number) {
+    days = d
+    firstDue = dueDateIso(todayIso(), d, 1)
+  }
+
+  const weekday = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+  }
 
   const problem = $derived.by(() => {
     if (total <= 0) return 'O total precisa ser maior que zero.'
@@ -180,9 +200,26 @@
       <span class="spacer"></span>
       <button onclick={() => (pickingCustomer = true)}>{customer ? 'Trocar' : 'Escolher'} cliente</button>
     </div>
-    <div class="grid3">
-      <label>Parcelas <input type="number" min="1" max="60" bind:value={count} data-submit /></label>
-      <label>Intervalo (dias) <input type="number" min="1" max="365" bind:value={days} data-submit /></label>
+    <div class="field">
+      <span class="label">Parcelas</span>
+      <div class="parcels">
+        {#each Array.from({ length: 12 }, (_, i) => i + 1) as n (n)}
+          <button class:selected={count === n} onclick={() => (count = n)}>
+            <strong>{n}×</strong>
+            <small>{fmt(round2(financed / n))}</small>
+          </button>
+        {/each}
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <span class="label">Intervalo</span>
+        <div class="intervals">
+          {#each INTERVALS as [d, name] (d)}
+            <button class:selected={days === d} onclick={() => setInterval(d)}>{name}</button>
+          {/each}
+        </div>
+      </div>
       <label>1º vencimento <input type="date" min={todayIso()} bind:value={firstDue} /></label>
     </div>
     <div class="grid2">
@@ -198,11 +235,19 @@
         </select>
       </label>
     </div>
-    {#if plan.length && !problem}
-      <p class="muted">
-        {#if down > 0}Entrada de {fmt(down)} + {/if}{plan.length}x de {fmt(plan[0])}{#if plan[plan.length - 1] !== plan[0]}
-          (última {fmt(plan[plan.length - 1])}){/if}{#if firstDue}, 1º vencimento em {fmtDate(firstDue)}{/if}.
-      </p>
+    {#if schedule.length && !problem}
+      <div class="schedule">
+        {#if down > 0}
+          <div><span>Entrada</span><span class="muted">hoje · recebida agora</span><strong>{fmt(down)}</strong></div>
+        {/if}
+        {#each schedule as s (s.label)}
+          <div>
+            <span>{s.label}</span>
+            <span class="muted">{#if s.due}{fmtDate(s.due)} · {weekday(s.due)}{/if}</span>
+            <strong>{fmt(s.amount)}</strong>
+          </div>
+        {/each}
+      </div>
     {/if}
   {:else}
     <p class="muted">Confirme depois que o pagamento passar na maquininha ou cair na conta.</p>
@@ -260,9 +305,69 @@
     justify-content: space-between;
     font-weight: 700;
   }
-  .grid3 {
+  .field {
     display: grid;
-    grid-template-columns: 1fr 1fr 1.3fr;
+    gap: 6px;
+  }
+  .label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .parcels {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+  .parcels button {
+    height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    padding: 0 4px;
+    border-radius: 12px;
+  }
+  .parcels strong {
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .parcels small {
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.75;
+  }
+  .intervals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .intervals button {
+    padding: 0 4px;
+    font-weight: 700;
+  }
+  .schedule {
+    max-height: 168px;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+  .schedule div {
+    display: flex;
     gap: 12px;
+    align-items: center;
+    padding: 7px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .schedule div:last-child {
+    border-bottom: 0;
+  }
+  .schedule span:first-child {
+    width: 64px;
+    font-weight: 700;
+  }
+  .schedule .muted {
+    flex: 1;
+    font-size: 12px;
   }
 </style>

@@ -32,10 +32,11 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'discount' | 'checkout' | 'done' | 'clear'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'discount' | 'total' | 'checkout' | 'done' | 'clear'>('')
   let custom = $state({ name: '', price: '', quantity: 1 })
   let discountInput = $state('')
-  let discountPercent = $state(false)
+  let discountPercent = $state(true)
+  let totalInput = $state('')
   let done = $state<{ sale: Sale; cashTendered?: number; print?: PrintResult; carne?: PrintResult } | null>(null)
   let printingCarne = $state(false)
 
@@ -203,9 +204,14 @@
     modal = ''
   }
 
+  // Abre em %; com desconto já aplicado, volta no modo e no valor em que foi dado.
   function openDiscount() {
-    discountInput = toInput(discount)
-    discountPercent = false
+    if (!discount) {
+      discountPercent = true
+      discountInput = ''
+    } else if (!discountPercent) {
+      discountInput = toInput(discount)
+    }
     modal = 'discount'
   }
 
@@ -218,6 +224,26 @@
     e.preventDefault()
     if (discountValue > subtotal) return
     discount = discountValue
+    modal = ''
+  }
+
+  // Fechar num total redondo: a diferença para o subtotal vira o desconto, em R$.
+  function openTotal() {
+    totalInput = toInput(total)
+    modal = 'total'
+  }
+
+  const newTotal = $derived(parseMoney(totalInput))
+  const totalProblem = $derived(
+    newTotal <= 0 ? 'Informe o total.' : newTotal > subtotal ? `O total não pode passar do subtotal (${fmt(subtotal)}).` : '',
+  )
+
+  function saveTotal(e: SubmitEvent) {
+    e.preventDefault()
+    if (totalProblem) return
+    discount = round2(subtotal - newTotal)
+    discountPercent = false
+    discountInput = toInput(discount)
     modal = ''
   }
 
@@ -263,6 +289,7 @@
       F4: () => (modal = 'customer'),
       F6: openCustom,
       F7: () => items.length && openDiscount(),
+      F8: () => items.length && openTotal(),
       F9: () => items.length && (modal = 'checkout'),
     }
     const fn = map[e.key]
@@ -385,7 +412,10 @@
         <span class="spacer"></span>
         <span class="num" class:green={discount > 0}>{discount ? `− ${fmt(discount)}` : fmt(0)}</span>
       </div>
-      <div class="grand"><span>Total</span><strong>{fmt(total)}</strong></div>
+      <div class="grand">
+        <span>Total <button class="ghost link" onclick={openTotal} disabled={!items.length}>Alterar <kbd>F8</kbd></button></span>
+        <strong>{fmt(total)}</strong>
+      </div>
       <button class="primary big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda <kbd>F9</kbd></button>
       <div class="grid2">
         <button onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
@@ -433,6 +463,28 @@
     {#snippet footer()}
       <button onclick={() => (modal = '')}>Voltar</button>
       <button class="primary" type="submit" form="discount" disabled={discountValue > subtotal}>Aplicar</button>
+    {/snippet}
+  </Modal>
+{:else if modal === 'total'}
+  <Modal title="Alterar total" onclose={() => (modal = '')} width="420px">
+    <form id="total" class="form" onsubmit={saveTotal}>
+      <label>
+        Total da venda
+        <!-- svelte-ignore a11y_autofocus -->
+        <input bind:value={totalInput} inputmode="decimal" autofocus placeholder={fmt(total)} onfocus={(e) => e.currentTarget.select()} />
+      </label>
+      {#if totalProblem}
+        <div class="alert warn">{totalProblem}</div>
+      {:else}
+        <p class="muted">
+          Desconto fica {fmt(round2(subtotal - newTotal))}{#if discount > 0 && newTotal !== total}
+            ({fmt(discount)} já dado {newTotal < total ? '+' : '−'} {fmt(Math.abs(round2(total - newTotal)))}){/if}.
+        </p>
+      {/if}
+    </form>
+    {#snippet footer()}
+      <button onclick={() => (modal = '')}>Voltar</button>
+      <button class="primary" type="submit" form="total" disabled={!!totalProblem}>Aplicar</button>
     {/snippet}
   </Modal>
 {:else if modal === 'clear'}
