@@ -77,7 +77,7 @@ O servidor padrão é `https://pdv.lucyan.dev`; dá para trocar na tela de conex
 
 ## Instaladores e atualização automática
 
-Cada versão é publicada no repositório **público** `lucyanpeixoto/credix-pdv-releases`
+Cada versão é publicada no repositório **público** `lucyanpeixoto/credix-desktop-releases`
 (o código deste repo continua privado). O app instalado confere lá ao abrir e a cada 2 h,
 baixa a versão nova em segundo plano e mostra o botão **"Atualizar para x.y.z"** no topo
 e na tela de PIN; ao clicar, instala e reinicia. Com um Pix aguardando, não reinicia.
@@ -98,7 +98,7 @@ O GitHub Actions compila Windows e macOS, assina as atualizações e publica a r
 |---|---|
 | `TAURI_SIGNING_PRIVATE_KEY` | conteúdo de `~/.tauri/credix-desktop.key` (gerada com `tauri signer generate`) |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | senha da chave (`~/.tauri/credix-desktop.password`) |
-| `RELEASES_TOKEN` | token do GitHub com permissão de escrita em `credix-pdv-releases` |
+| `RELEASES_TOKEN` | token do GitHub com permissão de escrita em `credix-desktop-releases` |
 
 A chave pública está em `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). **Perdendo a
 chave privada, os caixas instalados não aceitam mais atualizações** e precisam reinstalar à mão:

@@ -41,7 +41,7 @@ jobs:
       - run: npm ci
       - run: npm run check
 
-      # Com tag v*: publica a versão no repo público credix-pdv-releases (o código
+      # Com tag v*: publica a versão no repo público credix-desktop-releases (o código
       # aqui continua privado). O app instalado lê o latest.json de lá para se
       # atualizar sozinho, conferindo a assinatura feita com a chave abaixo.
       - uses: tauri-apps/tauri-action@v0
@@ -52,7 +52,7 @@ jobs:
         with:
           args: ${{ matrix.args }}
           owner: lucyanpeixoto
-          repo: credix-pdv-releases
+          repo: credix-desktop-releases
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: 'Credix PDV ${{ github.ref_name }}'
           releaseBody: 'Baixe o instalador abaixo. Caixas já instalados se atualizam sozinhos.'
