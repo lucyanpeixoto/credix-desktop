@@ -35,6 +35,8 @@ class Session {
   info = $state<TerminalInfo | null>(read<TerminalInfo>(INFO_KEY))
   seller = $state<Seller | null>(null)
   private pin: string | null = null
+  /** Vendedor que acabou de digitar o PIN, enquanto o caixa é conferido. */
+  private pendingSellerId: string | null = null
 
   /** Último toque do caixa (teclado/mouse), para o bloqueio por inatividade. */
   lastActivity = $state(Date.now())
@@ -51,7 +53,7 @@ class Session {
   api = $derived(
     new Api(
       this.settings.serverUrl,
-      () => ({ token: this.token, sellerId: this.seller?.id ?? null, pin: this.pin }),
+      () => ({ token: this.token, sellerId: this.seller?.id ?? this.pendingSellerId, pin: this.pin }),
       () => this.unpair(),
       () => this.lock(),
       (ok) => this.setOnline(ok),
@@ -132,9 +134,18 @@ class Session {
   async unlock(seller: Seller, pin: string) {
     const res = await this.api.unlock(seller.id, pin)
     this.pin = pin
+    // Confere o caixa ANTES de entrar: sem isso a tela de venda aparecia e só
+    // depois era trocada por "Abrir caixa".
+    this.pendingSellerId = res.seller.id
+    try {
+      this.cash = this.info?.company.cash_control === false ? null : await this.api.cash()
+    } catch {
+      this.cash = null
+    } finally {
+      this.pendingSellerId = null
+    }
     this.seller = res.seller
     this.touch()
-    await this.loadCash()
   }
 
   lock() {
