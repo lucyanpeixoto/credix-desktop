@@ -16,6 +16,13 @@ export interface Settings {
   autoPrint: boolean
   /** Abre a gaveta quando entra dinheiro. */
   openDrawer: boolean
+  /** Matricial do carnê (LX-300), instalada no computador; vazio = sem carnê. */
+  carnePrinter: string
+  /** Ajuste fino do carnê no formulário, em mm (+ direita / + desce). */
+  carneDx: number
+  carneDy: number
+  /** Negrito no carnê (fita gasta). */
+  carneBold: boolean
 }
 
 const KEY = 'credix-desktop.settings'
@@ -29,6 +36,10 @@ export const defaults: Settings = {
   paperColumns: 48,
   autoPrint: true,
   openDrawer: true,
+  carnePrinter: '',
+  carneDx: 0,
+  carneDy: 0,
+  carneBold: false,
 }
 
 export function loadSettings(): Settings {

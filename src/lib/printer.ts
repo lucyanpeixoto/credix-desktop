@@ -20,6 +20,13 @@ export async function sendToPrinter(s: Settings, bytes: number[]): Promise<void>
   }
 }
 
+/** Bytes direto para uma impressora instalada (RAW): a matricial do carnê. */
+export async function sendToSystemPrinter(printer: string, bytes: number[]): Promise<void> {
+  if (!inTauri()) throw new Error('A impressão só funciona no app instalado.')
+  if (!printer.trim()) throw new Error('Escolha a impressora do carnê em Configurações (F12).')
+  await invoke('print_system', { printer: printer.trim(), data: bytes })
+}
+
 export async function listPrinters(): Promise<string[]> {
   if (!inTauri()) return []
   return invoke<string[]>('list_printers')

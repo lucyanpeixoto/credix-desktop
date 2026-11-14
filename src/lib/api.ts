@@ -1,5 +1,7 @@
 // Cliente da API do Credix (Laravel + Sanctum).
 
+import type { CarneData } from './carne'
+
 export interface Company {
   id: string
   name: string
@@ -414,6 +416,14 @@ export class Api {
   }
   sale(id: string) {
     return this.request<SaleDetail>('GET', `sales/${id}`)
+  }
+  /** Carnê da LX-300: layout e uma folha por parcela em aberto. */
+  carne(id: string) {
+    return this.request<CarneData>('GET', `sales/${id}/carne`)
+  }
+  /** Só o layout do carnê (página de teste de alinhamento). */
+  carneLayout() {
+    return this.request<CarneData>('GET', 'carne/layout')
   }
   cancelSale(id: string, reason: string, key?: string) {
     return this.request<SaleDetail>('POST', `sales/${id}/cancel`, { body: { reason }, key })

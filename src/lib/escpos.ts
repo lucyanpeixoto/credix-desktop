@@ -5,7 +5,7 @@
 const ESC = 0x1b
 const GS = 0x1d
 
-const plain = (s: string): string =>
+export const plain = (s: string): string =>
   s
     .replace(/[\u00a0\u202f]/g, ' ')
     .normalize('NFD')

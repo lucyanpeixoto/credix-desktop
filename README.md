@@ -30,6 +30,12 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 - Cupom ESC/POS em impressora térmica **de rede** (IP:9100) ou **instalada no computador** (USB, modo RAW no Windows / CUPS no macOS)
 - Bobina de 80 mm ou 58 mm, impressão automática e abertura de gaveta quando entra dinheiro
 
+**Carnê na matricial (LX-300)** (`F12` → Configurações)
+- Formulário contínuo pré-impresso de 215 × 76,5 mm, duas vias por folha, com o mesmo layout do "Carnê LX-300 calibrado" do web
+- Vai direto para a impressora em ESC/P (modo RAW): sem janela de impressão e sem criar formulário no Windows
+- Botão "Imprimir carnê" na venda concluída no crediário e na aba Vendas; sai uma folha por parcela em aberto
+- Ajuste fino de posição em passos de 0,5 mm e página de teste, salvos neste computador
+
 Todas as regras (preço, estoque, parcelas, juros, permissões) continuam no servidor: o PDV só envia o pedido e mostra o resultado.
 
 ## Conexão com a loja e PIN

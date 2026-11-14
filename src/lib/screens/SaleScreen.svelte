@@ -7,7 +7,7 @@
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
-  import { printSale, type PrintResult } from '../print'
+  import { printCarne, printSale, type PrintResult } from '../print'
   import { printerReady } from '../printer'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
@@ -36,7 +36,16 @@
   let custom = $state({ name: '', price: '', quantity: 1 })
   let discountInput = $state('')
   let discountPercent = $state(false)
-  let done = $state<{ sale: Sale; cashTendered?: number; print?: PrintResult } | null>(null)
+  let done = $state<{ sale: Sale; cashTendered?: number; print?: PrintResult; carne?: PrintResult } | null>(null)
+  let printingCarne = $state(false)
+
+  // Carnê na matricial: pelo botão, depois da venda no crediário.
+  async function carne() {
+    if (!done || printingCarne) return
+    printingCarne = true
+    done.carne = await printCarne(done.sale.id)
+    printingCarne = false
+  }
 
   const subtotal = $derived(subtotalOf(items))
   const total = $derived(round2(Math.max(0, subtotal - discount)))
@@ -465,8 +474,14 @@
       {#if done.print}
         <div class="alert" class:ok={done.print.ok}>{done.print.ok ? 'Cupom impresso.' : `Não imprimiu: ${done.print.message}`}</div>
       {/if}
+      {#if done.carne}
+        <div class="alert" class:ok={done.carne.ok}>{done.carne.ok ? done.carne.message : `Carnê não imprimiu: ${done.carne.message}`}</div>
+      {/if}
     </div>
     {#snippet footer()}
+      {#if done?.sale.payment_type === 'crediario' && session.settings.carnePrinter}
+        <button onclick={carne} disabled={printingCarne}>{printingCarne ? 'Enviando…' : 'Imprimir carnê'}</button>
+      {/if}
       <button onclick={reprint} disabled={!printerReady(session.settings)}>Imprimir <kbd>P</kbd></button>
       <button class="primary" onclick={() => (modal = '')}>Nova venda <kbd>Enter</kbd></button>
     {/snippet}

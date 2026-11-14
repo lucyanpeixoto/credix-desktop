@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { printCarneTest } from '../print'
   import { inTauri, listPrinters, sendToPrinter, testTicket } from '../printer'
   import { session } from '../session.svelte'
   import type { Settings } from '../settings'
@@ -11,6 +12,24 @@
   let printers = $state<string[]>([])
   let status = $state<{ ok: boolean; text: string } | null>(null)
   let testing = $state(false)
+  let carneStatus = $state<{ ok: boolean; text: string } | null>(null)
+  let carneTesting = $state(false)
+
+  // Ajuste fino do carnê em passos de 0,5 mm, até 20 mm para cada lado.
+  function nudge(key: 'carneDx' | 'carneDy', by: number) {
+    form[key] = Math.min(20, Math.max(-20, Math.round((form[key] + by) * 10) / 10))
+  }
+  const mm = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1).replace('.', ',')} mm`
+
+  async function testCarne() {
+    carneTesting = true
+    carneStatus = null
+    const res = await printCarneTest(form)
+    carneStatus = res.ok
+      ? { ok: true, text: 'Enviado. Confira se os textos caíram dentro dos campos do formulário e ajuste se precisar.' }
+      : { ok: false, text: res.message ?? 'Não imprimiu.' }
+    carneTesting = false
+  }
 
   onMount(async () => {
     try {
@@ -93,6 +112,44 @@
     {#if status}<div class="alert" class:ok={status.ok}>{status.text}</div>{/if}
   {/if}
 
+  <h3>Carnê (matricial LX-300)</h3>
+  <label>
+    Impressora do carnê
+    {#if printers.length}
+      <select bind:value={form.carnePrinter}>
+        <option value="">Sem carnê neste caixa</option>
+        {#each printers as p (p)}<option value={p}>{p}</option>{/each}
+      </select>
+    {:else}
+      <input bind:value={form.carnePrinter} placeholder="Nome exato da impressora (vazio = sem carnê)" />
+    {/if}
+  </label>
+  {#if form.carnePrinter}
+    <div class="adjust">
+      <span>Horizontal <small class="muted">(+ direita)</small></span>
+      <span class="stepper">
+        <button onclick={() => nudge('carneDx', -0.5)} aria-label="Para a esquerda">−</button>
+        <output>{mm(form.carneDx)}</output>
+        <button onclick={() => nudge('carneDx', 0.5)} aria-label="Para a direita">+</button>
+      </span>
+      <span>Vertical <small class="muted">(+ desce)</small></span>
+      <span class="stepper">
+        <button onclick={() => nudge('carneDy', -0.5)} aria-label="Para cima">−</button>
+        <output>{mm(form.carneDy)}</output>
+        <button onclick={() => nudge('carneDy', 0.5)} aria-label="Para baixo">+</button>
+      </span>
+    </div>
+    <div class="grid">
+      <label class="check"><input type="checkbox" bind:checked={form.carneBold} /> Negrito (fita gasta)</label>
+      <div class="end"><button onclick={testCarne} disabled={carneTesting}>{carneTesting ? 'Enviando…' : 'Imprimir teste'}</button></div>
+    </div>
+    <p class="muted small">
+      Coloque o formulário com o topo na cabeça de impressão. A página de teste sai com dados de exemplo: ajuste em passos de 0,5 mm até caírem
+      nos campos e salve. O carnê vai direto para a impressora, sem janela de impressão.
+    </p>
+    {#if carneStatus}<div class="alert" class:ok={carneStatus.ok}>{carneStatus.text}</div>{/if}
+  {/if}
+
   <h3>Este caixa</h3>
   <div class="info">
     <div class="row"><span class="muted">Loja</span><span class="spacer"></span><strong>{session.company?.name ?? '—'}</strong></div>
@@ -129,6 +186,34 @@
   .end {
     display: grid;
     align-content: end;
+  }
+  .adjust {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px 12px;
+    font-size: 14px;
+  }
+  .stepper {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .stepper button {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    font-size: 18px;
+  }
+  .stepper output {
+    min-width: 76px;
+    text-align: center;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
   .check {
     display: flex;
