@@ -54,7 +54,7 @@ jobs:
           owner: lucyanpeixoto
           repo: credix-desktop-releases
           # A tag é criada no repo de releases, que não tem os commits daqui.
-          commitish: main
+          releaseCommitish: main
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: 'Credix PDV ${{ github.ref_name }}'
           releaseBody: 'Baixe o instalador abaixo. Caixas já instalados se atualizam sozinhos.'
