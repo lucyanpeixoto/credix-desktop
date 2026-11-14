@@ -1,0 +1,548 @@
+<script lang="ts">
+  import { onMount, tick } from 'svelte'
+  import type { Sale, SaleDetail, SaleFilters } from '../api'
+  import { fmt, fmtDate, PAYMENT_LABELS, todayIso } from '../money'
+  import { printSale, type PrintResult } from '../print'
+  import { printerReady } from '../printer'
+  import { session } from '../session.svelte'
+  import Icon from '../ui/Icon.svelte'
+
+  let { active }: { active: boolean } = $props()
+
+  const STATUS: Record<string, { label: string; cls: string }> = {
+    completed: { label: 'Paga', cls: 'ok' },
+    pending: { label: 'Em aberto', cls: 'soon' },
+    cancelled: { label: 'Cancelada', cls: 'late' },
+  }
+  const INST: Record<string, string> = { paid: 'Paga', pending: 'Aberta', partial: 'Parcial', overdue: 'Atrasada', cancelled: 'Cancelada' }
+
+  let searchEl = $state<HTMLInputElement>()
+  let date = $state(todayIso())
+  let search = $state('')
+  let paymentType = $state('')
+  let status = $state('')
+  let thisTerminal = $state(false)
+  let page = $state(1)
+
+  let list = $state<Sale[]>([])
+  let summary = $state({ count: 0, total: 0 })
+  let lastPage = $state(1)
+  let loading = $state(false)
+  let error = $state('')
+  let hl = $state(0)
+
+  let detail = $state<SaleDetail | null>(null)
+  let loadingDetail = $state(false)
+  let detailError = $state('')
+  let print = $state<PrintResult | null>(null)
+  let copied = $state(false)
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let seq = 0
+  let dseq = 0
+  let wasActive = false
+
+  onMount(load)
+
+  // Ao voltar para a aba, atualiza a lista (pode ter venda nova).
+  $effect(() => {
+    if (active && !wasActive) {
+      load()
+      tick().then(() => searchEl?.focus())
+    }
+    wasActive = active
+  })
+
+  function filters(): SaleFilters {
+    return {
+      date,
+      search: search.trim() || undefined,
+      payment_type: paymentType || undefined,
+      status: status || undefined,
+      this_terminal: thisTerminal || undefined,
+      page,
+    }
+  }
+
+  async function load() {
+    const mine = ++seq
+    loading = true
+    error = ''
+    try {
+      const res = await session.api.sales(filters())
+      if (mine !== seq) return
+      list = res.data
+      summary = res.summary
+      lastPage = res.meta?.last_page ?? 1
+      hl = 0
+      if (list.length === 1 || (detail && !list.some((s) => s.id === detail!.id))) open(list[0])
+    } catch (e) {
+      if (mine === seq) error = (e as Error).message
+    } finally {
+      if (mine === seq) loading = false
+    }
+  }
+
+  function refilter() {
+    page = 1
+    load()
+  }
+
+  function onSearch() {
+    clearTimeout(timer)
+    timer = setTimeout(refilter, 300)
+  }
+
+  async function open(s: Sale | undefined) {
+    print = null
+    copied = false
+    if (!s) {
+      detail = null
+      return
+    }
+    const mine = ++dseq
+    loadingDetail = true
+    detailError = ''
+    try {
+      const d = await session.api.sale(s.id)
+      if (mine === dseq) detail = d
+    } catch (e) {
+      if (mine === dseq) detailError = (e as Error).message
+    } finally {
+      if (mine === dseq) loadingDetail = false
+    }
+  }
+
+  async function reprint() {
+    if (detail) print = await printSale(detail)
+  }
+
+  async function copyWhatsapp() {
+    if (!detail?.whatsapp_message) return
+    try {
+      await navigator.clipboard.writeText(detail.whatsapp_message)
+      copied = true
+      setTimeout(() => (copied = false), 2000)
+    } catch {
+      // ignorado
+    }
+  }
+
+  function keydown(e: KeyboardEvent) {
+    if (!active) return
+    const target = e.target as HTMLElement
+    if (e.key === 'ArrowDown' && list.length) {
+      e.preventDefault()
+      hl = Math.min(hl + 1, list.length - 1)
+      open(list[hl])
+    } else if (e.key === 'ArrowUp' && list.length) {
+      e.preventDefault()
+      hl = Math.max(hl - 1, 0)
+      open(list[hl])
+    } else if (e.key === 'F3') {
+      e.preventDefault()
+      searchEl?.focus()
+    } else if (e.key.toLowerCase() === 'p' && detail && target?.tagName !== 'INPUT') {
+      e.preventDefault()
+      reprint()
+    }
+  }
+
+  const time = (s: Sale) => s.created_at_formatted.split(' ')[1] ?? s.created_at_formatted
+  const isToday = $derived(date === todayIso())
+</script>
+
+<svelte:window onkeydown={keydown} />
+
+<div class="screen">
+  <section class="listcol">
+    <div class="filters">
+      <label class="search">
+        <span class="lens"><Icon name="search" size={18} /></span>
+        <input
+          bind:this={searchEl}
+          bind:value={search}
+          oninput={onSearch}
+          placeholder="Número da venda ou nome do cliente"
+          aria-label="Buscar venda"
+        />
+        <kbd>F3</kbd>
+      </label>
+      <div class="row wrap">
+        <input type="date" bind:value={date} max={todayIso()} onchange={refilter} aria-label="Data" />
+        <select bind:value={paymentType} onchange={refilter} aria-label="Forma de pagamento">
+          <option value="">Todas as formas</option>
+          {#each Object.entries(PAYMENT_LABELS).filter(([k]) => !['ajuste', 'desconto'].includes(k)) as [k, v] (k)}
+            <option value={k}>{v}</option>
+          {/each}
+        </select>
+        <select bind:value={status} onchange={refilter} aria-label="Situação">
+          <option value="">Todas</option>
+          <option value="completed">Pagas</option>
+          <option value="pending">Em aberto</option>
+          <option value="cancelled">Canceladas</option>
+        </select>
+        <label class="check"><input type="checkbox" bind:checked={thisTerminal} onchange={refilter} /> Só deste caixa</label>
+      </div>
+    </div>
+
+    <div class="sum">
+      <span>{isToday ? 'Hoje' : fmtDate(date)} · {summary.count} {summary.count === 1 ? 'venda' : 'vendas'}</span>
+      <strong>{fmt(summary.total)}</strong>
+    </div>
+
+    <div class="list">
+      {#if error}
+        <div class="alert">{error}</div>
+      {/if}
+      {#each list as s, i (s.id)}
+        <button class="item" class:on={detail?.id === s.id} class:cancel={s.status === 'cancelled'} onclick={() => ((hl = i), open(s))}>
+          <span class="code">#{s.code}</span>
+          <span class="mid">
+            <strong>{s.customer?.name ?? 'Consumidor'}</strong>
+            <span>{time(s)} · {PAYMENT_LABELS[s.payment_type] ?? s.payment_type}{#if s.seller} · {s.seller.first_name}{/if}</span>
+          </span>
+          <span class="right">
+            <strong>{fmt(s.total)}</strong>
+            <span class="badge {STATUS[s.status]?.cls ?? ''}">{STATUS[s.status]?.label ?? s.status}</span>
+          </span>
+        </button>
+      {:else}
+        <p class="muted empty">{loading ? 'Carregando vendas…' : 'Nenhuma venda encontrada.'}</p>
+      {/each}
+    </div>
+
+    {#if lastPage > 1}
+      <div class="pager">
+        <button disabled={page <= 1} onclick={() => ((page -= 1), load())}>Anterior</button>
+        <span class="muted small">Página {page} de {lastPage}</span>
+        <button disabled={page >= lastPage} onclick={() => ((page += 1), load())}>Próxima</button>
+      </div>
+    {/if}
+  </section>
+
+  <aside class="detail">
+    {#if detailError}
+      <div class="alert">{detailError}</div>
+    {:else if !detail}
+      <div class="none">
+        <Icon name="search" size={28} />
+        <strong>{loadingDetail ? 'Abrindo…' : 'Escolha uma venda'}</strong>
+        <span class="muted">Use ↑ ↓ para passar pelas vendas.</span>
+      </div>
+    {:else}
+      {@const d = detail}
+      <div class="dhead">
+        <div>
+          <h2>Venda #{d.code}</h2>
+          <span class="muted small">{d.created_at_formatted}{#if d.terminal} · {d.terminal}{/if}</span>
+        </div>
+        <span class="badge {STATUS[d.status]?.cls ?? ''}">{STATUS[d.status]?.label ?? d.status}</span>
+      </div>
+
+      <div class="scroll">
+        <div class="block grid2">
+          <div><span class="lbl">Cliente</span><strong>{d.customer?.name ?? 'Consumidor'}</strong>
+            {#if d.customer?.cpf_formatted || d.customer?.phone_formatted}<span class="muted small">{[d.customer?.cpf_formatted, d.customer?.phone_formatted].filter(Boolean).join(' · ')}</span>{/if}
+          </div>
+          <div><span class="lbl">Vendedor</span><strong>{d.seller?.name ?? d.user?.name ?? '—'}</strong></div>
+          <div><span class="lbl">Pagamento</span><strong>{PAYMENT_LABELS[d.payment_type] ?? d.payment_type}</strong></div>
+          {#if d.payment_type === 'crediario'}
+            <div><span class="lbl">Falta pagar</span><strong class:red={(d.remaining_amount ?? 0) > 0}>{fmt(d.remaining_amount)}</strong></div>
+          {/if}
+        </div>
+
+        <div class="block">
+          <span class="lbl">Itens</span>
+          {#each d.items ?? [] as it, i (i)}
+            <div class="line">
+              <span>{it.quantity}× {it.product_name}{#if it.is_custom} <span class="badge">avulso</span>{/if}</span>
+              <span class="num">{fmt(it.subtotal)}</span>
+            </div>
+          {/each}
+          {#if d.discount > 0}
+            <div class="line muted"><span>Subtotal</span><span class="num">{fmt(d.subtotal)}</span></div>
+            <div class="line muted"><span>Desconto</span><span class="num">− {fmt(d.discount)}</span></div>
+          {/if}
+          <div class="line total"><span>Total</span><span class="num">{fmt(d.total)}</span></div>
+        </div>
+
+        {#if d.installments?.length}
+          <div class="block">
+            <span class="lbl">Parcelas</span>
+            {#each d.installments as p (p.id)}
+              <div class="line">
+                <span>{p.notes === 'Entrada' ? 'Entrada' : `${p.installment_number}ª`} · {fmtDate(p.due_date)}</span>
+                <span class="row gap">
+                  <span class="badge {p.status === 'paid' ? 'ok' : p.is_overdue ? 'late' : ''}">{p.is_overdue && p.status !== 'paid' ? `${p.days_overdue}d atraso` : (INST[p.status] ?? p.status)}</span>
+                  <span class="num">{fmt(p.amount)}</span>
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        {#if d.receipts?.length}
+          <div class="block">
+            <span class="lbl">Recebimentos</span>
+            {#each d.receipts as r (r.id)}
+              <div class="line">
+                <span>
+                  #{r.code} · {new Date(r.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                  <span class="muted small">{r.methods.join(', ')}{#if r.received_by} · {r.received_by}{/if}{#if r.status === 'reversed'} · estornado{/if}</span>
+                </span>
+                <span class="num" class:strike={r.status === 'reversed'}>{fmt(r.amount_on_sale)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        {#if d.notes}
+          <div class="block"><span class="lbl">Observação</span><p>{d.notes}</p></div>
+        {/if}
+
+        {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? 'Cupom impresso.' : `Não imprimiu: ${print.message}`}</div>{/if}
+      </div>
+
+      <div class="actions">
+        {#if d.whatsapp_message}
+          <button onclick={copyWhatsapp}>{copied ? 'Copiado!' : 'Copiar p/ WhatsApp'}</button>
+        {/if}
+        <button class="primary" onclick={reprint} disabled={!printerReady(session.settings) || d.status === 'cancelled'}>
+          <Icon name="printer" size={16} /> Reimprimir <kbd>P</kbd>
+        </button>
+      </div>
+    {/if}
+  </aside>
+</div>
+
+<style>
+  .screen {
+    height: 100%;
+    display: flex;
+    min-height: 0;
+  }
+  .listcol {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px 24px;
+  }
+  .filters {
+    display: grid;
+    gap: 10px;
+  }
+  .search {
+    position: relative;
+    display: block;
+  }
+  .search input {
+    height: 52px;
+    border-radius: 14px;
+    border-width: 2px;
+    padding: 0 60px 0 44px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .lens {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--faint);
+    display: flex;
+  }
+  .search kbd {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .wrap {
+    flex-wrap: wrap;
+  }
+  .wrap > input,
+  .wrap > select {
+    width: auto;
+    flex: 1 1 150px;
+  }
+  .check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--ink-2);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .sum {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .sum strong {
+    font-size: 20px;
+    color: var(--ink);
+  }
+  .list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    gap: 6px;
+    align-content: start;
+  }
+  .item {
+    height: auto;
+    padding: 12px 14px;
+    justify-content: flex-start;
+    gap: 14px;
+    text-align: left;
+    border-radius: 14px;
+  }
+  .item.on {
+    border-color: var(--brand);
+    background: var(--brand-50);
+  }
+  .item.cancel .mid strong,
+  .item.cancel .right strong {
+    text-decoration: line-through;
+    color: var(--faint);
+  }
+  .code {
+    font-weight: 800;
+    color: var(--muted);
+    min-width: 56px;
+  }
+  .mid {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+  }
+  .mid strong {
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mid span,
+  .small {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .right {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+  }
+  .right strong {
+    color: var(--ink);
+    font-size: 15px;
+  }
+  .empty {
+    padding: 40px 0;
+    text-align: center;
+  }
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .detail {
+    width: 440px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-left: 1px solid var(--line);
+    min-height: 0;
+  }
+  .none {
+    height: 100%;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 6px;
+    color: var(--faint);
+    text-align: center;
+  }
+  .none strong {
+    color: var(--ink);
+  }
+  .dhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 18px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .dhead > div {
+    display: grid;
+    gap: 2px;
+  }
+  h2 {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 18px 18px;
+  }
+  .block {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-soft);
+    display: grid;
+    gap: 8px;
+  }
+  .block.grid2 > div {
+    display: grid;
+    gap: 2px;
+  }
+  .lbl {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+  }
+  .line > span:first-child {
+    display: grid;
+  }
+  .line.total {
+    font-size: 17px;
+    font-weight: 800;
+    padding-top: 4px;
+  }
+  .gap {
+    gap: 8px;
+  }
+  .red {
+    color: var(--danger);
+  }
+  .strike {
+    text-decoration: line-through;
+    color: var(--faint);
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 14px 18px;
+    border-top: 1px solid var(--line);
+  }
+</style>

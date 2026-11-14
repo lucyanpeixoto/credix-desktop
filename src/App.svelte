@@ -11,11 +11,12 @@
   import Pair from './lib/screens/Pair.svelte'
   import ReceiveScreen from './lib/screens/ReceiveScreen.svelte'
   import SaleScreen from './lib/screens/SaleScreen.svelte'
+  import SalesScreen from './lib/screens/SalesScreen.svelte'
   import { session } from './lib/session.svelte'
   import Icon from './lib/ui/Icon.svelte'
   import Logo from './lib/ui/Logo.svelte'
 
-  let tab = $state<'sale' | 'receive'>('sale')
+  let tab = $state<'sale' | 'receive' | 'sales'>('sale')
   let settingsOpen = $state(false)
   let cashOpen = $state(false)
 
@@ -60,6 +61,9 @@
     } else if (e.key === 'F2') {
       e.preventDefault()
       tab = 'receive'
+    } else if (e.key === 'F5') {
+      e.preventDefault()
+      tab = 'sales'
     } else if (e.key === 'F12') {
       e.preventDefault()
       settingsOpen = true
@@ -94,6 +98,7 @@
       <nav>
         <button class:on={tab === 'sale'} onclick={() => (tab = 'sale')}>Venda <kbd>F1</kbd></button>
         <button class:on={tab === 'receive'} onclick={() => (tab = 'receive')}>Receber <kbd>F2</kbd></button>
+        <button class:on={tab === 'sales'} onclick={() => (tab = 'sales')}>Vendas <kbd>F5</kbd></button>
       </nav>
       <span class="spacer"></span>
       <ConnectionBadge />
@@ -124,6 +129,9 @@
         </div>
         <div class="tab" class:hidden={tab !== 'receive' || session.needsCashOpen}>
           <ReceiveScreen active={tab === 'receive' && !settingsOpen && !cashOpen && !session.needsCashOpen} />
+        </div>
+        <div class="tab" class:hidden={tab !== 'sales'}>
+          <SalesScreen active={tab === 'sales' && !settingsOpen && !cashOpen} />
         </div>
       {/key}
     </main>
