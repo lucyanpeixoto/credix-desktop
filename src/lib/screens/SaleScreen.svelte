@@ -59,14 +59,15 @@
   const subtotal = $derived(subtotalOf(items))
   const total = $derived(round2(Math.max(0, subtotal - discount)))
   const count = $derived(items.reduce((s, i) => s + i.quantity, 0))
+  const qtyOf = (productId: string, variantId: string) =>
+    items.find((i) => i.product_id === productId && i.variant_id === variantId)?.quantity ?? 0
+
   // Soma por produto: com grade, cada tamanho/cor é uma linha do carrinho.
   const qtyById = $derived(
     items.reduce((m, i) => (i.product_id ? m.set(i.product_id, (m.get(i.product_id) ?? 0) + i.quantity) : m), new Map<string, number>()),
   )
   const searching = $derived(parseQuantityPrefix(search).term.length >= 2)
 
-  const TILE = ['tile-blue', 'tile-green', 'tile-amber', 'tile-pink', 'tile-violet']
-  const tileOf = (p: Product) => TILE[[...p.id].reduce((s, c) => s + c.charCodeAt(0), 0) % TILE.length]
   const initialsOf = (name: string) =>
     name
       .split(/\s+/)
@@ -367,17 +368,35 @@
         <div class="grid">
           {#each products as p, i (p.id)}
             {@const q = qtyById.get(p.id)}
-            <button class="product" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
+            {#snippet body()}
               {#if q}<span class="qty">{q}</span>{/if}
-              <span class="tile {tileOf(p)}">{initialsOf(p.name)}</span>
               <span class="name">{p.name}</span>
+              {#if p.sku}<span class="sku">SKU {p.sku}</span>{/if}
               <span class="bottom">
                 <span class="price">{fmt(p.price)}</span>
                 {#if p.stock !== null}
                   <span class="stock" class:zero={p.stock <= 0} class:low={p.stock > 0 && p.stock <= 5}>estoque {p.stock}</span>
                 {/if}
               </span>
-            </button>
+            {/snippet}
+            {#if p.has_variants && p.variants?.length}
+              <!-- Com grade, cada tamanho/cor entra direto no carrinho. -->
+              <div class="product grade" class:incart={!!q} class:hl={searching && i === highlighted}>
+                {@render body()}
+                <span class="variants-inline">
+                  {#each p.variants as v (v.id)}
+                    {@const vq = qtyOf(p.id, v.id)}
+                    <button class:selected={!!vq} class:out={v.stock <= 0} title={v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'} onclick={() => add(p, 1, v)}>
+                      {v.label} <small>{vq ? `×${vq}` : Math.max(0, v.stock)}</small>
+                    </button>
+                  {/each}
+                </span>
+              </div>
+            {:else}
+              <button class="product" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
+                {@render body()}
+              </button>
+            {/if}
           {/each}
         </div>
       {:else}
@@ -701,6 +720,11 @@
     text-align: left;
     box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
   }
+  .product.grade {
+    display: flex;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
   .product:hover:not(:disabled) {
     border-color: var(--brand-200);
     background: #fff;
@@ -728,38 +752,45 @@
     align-items: center;
     justify-content: center;
   }
-  .tile {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+  .sku {
+    margin-top: 2px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .variants-inline {
+    margin-top: 10px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    font-weight: 800;
+    flex-wrap: wrap;
+    gap: 6px;
   }
-  .tile-blue {
-    background: #dbeafe;
-    color: #1e40af;
+  .variants-inline button {
+    height: 30px;
+    min-width: 40px;
+    padding: 0 8px;
+    gap: 4px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
   }
-  .tile-green {
-    background: #d1fae5;
-    color: #047857;
+  .variants-inline button small {
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.6;
   }
-  .tile-amber {
-    background: #fef3c7;
-    color: #b45309;
+  .variants-inline button.out {
+    border-style: dashed;
+    color: var(--muted);
   }
-  .tile-pink {
-    background: #fce7f3;
-    color: #be185d;
-  }
-  .tile-violet {
-    background: #ede9fe;
-    color: #6d28d9;
+  .variants-inline button.out small {
+    color: var(--danger);
+    opacity: 1;
   }
   .name {
-    margin-top: 12px;
+    padding-right: 28px;
     min-height: 40px;
     font-size: 14px;
     font-weight: 600;
