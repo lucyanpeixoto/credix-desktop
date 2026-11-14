@@ -5,7 +5,7 @@
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
   import { fmt, fmtDate, PAYMENT_LABELS, todayIso } from '../money'
-  import { printSale, type PrintResult } from '../print'
+  import { printCarne, printSale, type PrintResult } from '../print'
   import { printerReady } from '../printer'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
@@ -169,6 +169,19 @@
 
   async function reprint() {
     if (detail) print = await printSale(detail)
+  }
+
+  // Carnê na matricial: só no crediário, com as parcelas em aberto.
+  let printingCarne = $state(false)
+  const canCarne = $derived(
+    !!detail && detail.payment_type === 'crediario' && detail.status !== 'cancelled'
+      && (detail.installments ?? []).some((i) => i.status !== 'paid' && i.status !== 'cancelled'),
+  )
+  async function carne() {
+    if (!detail || printingCarne) return
+    printingCarne = true
+    print = await printCarne(detail.id)
+    printingCarne = false
   }
 
   async function copyWhatsapp() {
@@ -421,7 +434,7 @@
           <div class="block"><span class="lbl">Observação</span><p>{d.notes}</p></div>
         {/if}
 
-        {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? 'Cupom impresso.' : `Não imprimiu: ${print.message}`}</div>{/if}
+        {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? (print.message ?? 'Cupom impresso.') : `Não imprimiu: ${print.message}`}</div>{/if}
         {#if cancelled}<div class="alert warn">{cancelled}</div>{/if}
       </div>
 
@@ -432,6 +445,15 @@
         {/if}
         {#if d.whatsapp_message}
           <button onclick={copyWhatsapp}>{copied ? 'Copiado!' : 'Copiar p/ WhatsApp'}</button>
+        {/if}
+        {#if canCarne}
+          <button
+            onclick={carne}
+            disabled={printingCarne || !session.settings.carnePrinter}
+            title={session.settings.carnePrinter ? 'Imprime as parcelas em aberto na matricial' : 'Escolha a impressora do carnê em Configurações (F12)'}
+          >
+            <Icon name="printer" size={16} /> {printingCarne ? 'Enviando…' : 'Imprimir carnê'}
+          </button>
         {/if}
         <button class="primary" onclick={reprint} disabled={!printerReady(session.settings) || d.status === 'cancelled'}>
           <Icon name="printer" size={16} /> Reimprimir <kbd>P</kbd>

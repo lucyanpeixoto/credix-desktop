@@ -1,7 +1,17 @@
 // Impressão com as configurações do terminal; nunca derruba a venda se falhar.
 import type { CashMovement, CashSession, Receipt, Sale } from './api'
-import { cashCloseTicket, movementTicket, printerReady, receiptTicket, saleTicket, sendToPrinter } from './printer'
+import { carneBytes, carneTestBytes, type CarneAdjust } from './carne'
+import {
+  cashCloseTicket,
+  movementTicket,
+  printerReady,
+  receiptTicket,
+  saleTicket,
+  sendToPrinter,
+  sendToSystemPrinter,
+} from './printer'
 import { session } from './session.svelte'
+import type { Settings } from './settings'
 
 export interface PrintResult {
   ok: boolean
@@ -55,6 +65,33 @@ export async function printMovement(m: CashMovement): Promise<PrintResult> {
   if (!printerReady(s)) return { ok: false, message: 'Nenhuma impressora configurada.' }
   try {
     await sendToPrinter(s, movementTicket(s, m, cashStore(), s.openDrawer))
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, message: String((e as Error)?.message ?? e) }
+  }
+}
+
+// Carnê na matricial (LX-300), com o ajuste fino deste computador.
+const carneAdjust = (s: Settings): CarneAdjust => ({ dx: s.carneDx, dy: s.carneDy, bold: s.carneBold })
+
+/** Imprime o carnê das parcelas em aberto da venda. */
+export async function printCarne(saleId: string): Promise<PrintResult> {
+  const s = session.settings
+  try {
+    const data = await session.api.carne(saleId)
+    if (!data.sheets.length) return { ok: false, message: 'Esta venda não tem parcelas em aberto para o carnê.' }
+    await sendToSystemPrinter(s.carnePrinter, carneBytes(data, carneAdjust(s)))
+    return { ok: true, message: `${data.sheets.length} ${data.sheets.length === 1 ? 'folha' : 'folhas'} de carnê enviada(s).` }
+  } catch (e) {
+    return { ok: false, message: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Página de teste de alinhamento, com as configurações informadas (ainda não salvas). */
+export async function printCarneTest(s: Settings): Promise<PrintResult> {
+  try {
+    const data = await session.api.carneLayout()
+    await sendToSystemPrinter(s.carnePrinter, carneTestBytes(data, carneAdjust(s)))
     return { ok: true }
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message ?? e) }
