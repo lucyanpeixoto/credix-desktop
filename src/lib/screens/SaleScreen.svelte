@@ -382,16 +382,30 @@
               </span>
             {/snippet}
             {#if p.has_variants && p.variants?.length}
-              <!-- Com grade, cada tamanho/cor entra direto no carrinho. -->
-              <div class="product grade" class:incart={!!q} class:hl={searching && i === highlighted}>
+              <!-- Com grade: até 2 tamanhos/cores no card (com estoque primeiro), que já
+                   entram no carrinho; o card e o +N abrem a escolha com todas. -->
+              {@const shown = [...p.variants].sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0)).slice(0, 2)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div class="product grade" role="button" tabindex="-1" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
                 {@render body()}
                 <span class="variants-inline">
-                  {#each p.variants as v (v.id)}
+                  {#each shown as v (v.id)}
                     {@const vq = qtyOf(p.id, v.id)}
-                    <button class:selected={!!vq} class:out={v.stock <= 0} title={v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'} onclick={() => add(p, 1, v)}>
+                    <button
+                      class:selected={!!vq}
+                      class:out={v.stock <= 0}
+                      title={v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'}
+                      onclick={(e) => {
+                        e.stopPropagation()
+                        add(p, 1, v)
+                      }}
+                    >
                       {v.label} <small>{vq ? `×${vq}` : Math.max(0, v.stock)}</small>
                     </button>
                   {/each}
+                  {#if p.variants.length > shown.length}
+                    <button class="more" title="Ver todas as variações">+{p.variants.length - shown.length}</button>
+                  {/if}
                 </span>
               </div>
             {:else}
@@ -526,10 +540,17 @@
   <Modal title="Desconto" onclose={() => (modal = '')} width="420px">
     <form id="discount" class="form" onsubmit={saveDiscount}>
       <div class="row">
-        <button type="button" class:selected={!discountPercent} onclick={() => (discountPercent = false)}>R$</button>
-        <button type="button" class:selected={discountPercent} onclick={() => (discountPercent = true)}>%</button>
+        <!-- Trocar R$/% limpa o valor: o mesmo número quer dizer outra coisa. -->
+        <button type="button" class:selected={!discountPercent} onclick={() => discountPercent && ((discountPercent = false), (discountInput = ''))}>R$</button>
+        <button type="button" class:selected={discountPercent} onclick={() => !discountPercent && ((discountPercent = true), (discountInput = ''))}>%</button>
         <!-- svelte-ignore a11y_autofocus -->
-        <input bind:value={discountInput} inputmode="decimal" autofocus placeholder={discountPercent ? '10' : 'R$ 0,00'} />
+        <input
+          bind:value={discountInput}
+          inputmode="decimal"
+          data-mask={discountPercent ? 'off' : 'money'}
+          autofocus
+          placeholder={discountPercent ? '10' : 'R$ 0,00'}
+        />
       </div>
       <p class="muted">Desconto de {fmt(discountValue)} · total fica {fmt(Math.max(0, subtotal - discountValue))}</p>
       {#if discountValue > subtotal}<div class="alert warn">O desconto passa do subtotal.</div>{/if}
@@ -726,6 +747,10 @@
     display: flex;
     border: 1px solid var(--line);
     background: #fff;
+    cursor: pointer;
+  }
+  .variants-inline .more {
+    color: var(--brand);
   }
   .product:hover:not(:disabled) {
     border-color: var(--brand-200);
