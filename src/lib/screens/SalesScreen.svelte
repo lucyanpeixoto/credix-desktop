@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import type { Sale, SaleDetail, SaleFilters } from '../api'
+  import { Attempt } from '../attempt'
+  import Modal from '../components/Modal.svelte'
+  import { modalStack } from '../components/modalStack'
   import { fmt, fmtDate, PAYMENT_LABELS, todayIso } from '../money'
   import { printSale, type PrintResult } from '../print'
   import { printerReady } from '../printer'
@@ -36,6 +39,15 @@
   let detailError = $state('')
   let print = $state<PrintResult | null>(null)
   let copied = $state(false)
+
+  // Cancelamento
+  const REASONS = ['Cliente desistiu', 'Lançada errada', 'Troca de forma de pagamento', 'Venda duplicada']
+  let canceling = $state(false)
+  let reason = $state('')
+  let cancelBusy = $state(false)
+  let cancelError = $state('')
+  let cancelled = $state<string | null>(null)
+  const cancelAttempt = new Attempt()
 
   let timer: ReturnType<typeof setTimeout> | undefined
   let seq = 0
@@ -96,6 +108,7 @@
   async function open(s: Sale | undefined) {
     print = null
     copied = false
+    cancelled = null
     if (!s) {
       detail = null
       return
@@ -111,6 +124,47 @@
     } finally {
       if (mine === dseq) loadingDetail = false
     }
+  }
+
+  function openCancel() {
+    reason = ''
+    cancelError = ''
+    canceling = true
+  }
+
+  async function confirmCancel(e?: SubmitEvent) {
+    e?.preventDefault()
+    if (!detail || cancelBusy || reason.trim().length < 3) return
+    cancelBusy = true
+    cancelError = ''
+    try {
+      const why = reason.trim()
+      const d = await session.api.cancelSale(detail.id, why, cancelAttempt.keyFor([detail.id, why]))
+      cancelAttempt.reset()
+      detail = d
+      canceling = false
+      cancelled = refundHint(d)
+      load()
+      session.loadCash()
+    } catch (err) {
+      cancelError = (err as Error).message
+    } finally {
+      cancelBusy = false
+    }
+  }
+
+  /** O que fazer com o dinheiro depois de cancelar. */
+  function refundHint(d: SaleDetail): string {
+    const paid = d.payment_type === 'crediario' ? 0 : d.total
+    if (!paid) return 'Venda cancelada. O estoque voltou.'
+    const how: Record<string, string> = {
+      dinheiro: `Devolva ${fmt(paid)} em dinheiro ao cliente.`,
+      pix: `Devolva ${fmt(paid)} por Pix ao cliente.`,
+      pix_online: `O Pix de ${fmt(paid)} precisa ser devolvido pelo Mercado Pago.`,
+      debito: `Estorne ${fmt(paid)} na maquininha (débito).`,
+      credito: `Estorne ${fmt(paid)} na maquininha (crédito).`,
+    }
+    return `Venda cancelada e estoque devolvido. ${how[d.payment_type] ?? ''}`.trim()
   }
 
   async function reprint() {
@@ -129,7 +183,7 @@
   }
 
   function keydown(e: KeyboardEvent) {
-    if (!active) return
+    if (!active || modalStack.open) return
     const target = e.target as HTMLElement
     if (e.key === 'ArrowDown' && list.length) {
       e.preventDefault()
@@ -302,9 +356,14 @@
         {/if}
 
         {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? 'Cupom impresso.' : `Não imprimiu: ${print.message}`}</div>{/if}
+        {#if cancelled}<div class="alert warn">{cancelled}</div>{/if}
       </div>
 
       <div class="actions">
+        {#if d.can_cancel}
+          <button class="danger" onclick={openCancel}>Cancelar venda</button>
+          <span class="spacer"></span>
+        {/if}
         {#if d.whatsapp_message}
           <button onclick={copyWhatsapp}>{copied ? 'Copiado!' : 'Copiar p/ WhatsApp'}</button>
         {/if}
@@ -316,7 +375,54 @@
   </aside>
 </div>
 
+{#if canceling && detail}
+  <Modal title={`Cancelar venda #${detail.code}`} onclose={() => (canceling = false)} width="460px">
+    <form id="cancel-sale" class="cform" onsubmit={confirmCancel}>
+      <p class="muted">
+        {fmt(detail.total)} · {PAYMENT_LABELS[detail.payment_type] ?? detail.payment_type}{#if detail.customer} · {detail.customer.name}{/if}.
+        O estoque volta e a venda sai do caixa.
+      </p>
+      <div class="chips">
+        {#each REASONS as r (r)}
+          <button type="button" class:selected={reason === r} onclick={() => (reason = r)}>{r}</button>
+        {/each}
+      </div>
+      <!-- svelte-ignore a11y_autofocus -->
+      <label>Motivo <input bind:value={reason} maxlength="255" placeholder="Por que está cancelando?" autofocus /></label>
+      {#if cancelError}<div class="alert">{cancelError}</div>{/if}
+    </form>
+    {#snippet footer()}
+      <button onclick={() => (canceling = false)}>Voltar</button>
+      <button class="primary dangerfill" type="submit" form="cancel-sale" disabled={cancelBusy || reason.trim().length < 3}>
+        {cancelBusy ? 'Cancelando…' : 'Cancelar venda'}
+      </button>
+    {/snippet}
+  </Modal>
+{/if}
+
 <style>
+  .cform {
+    display: grid;
+    gap: 12px;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chips button {
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+  .dangerfill {
+    background: var(--danger);
+    box-shadow: none;
+  }
+  .dangerfill:hover:not(:disabled) {
+    background: #991b1b;
+  }
   .screen {
     height: 100%;
     display: flex;
