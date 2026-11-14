@@ -75,20 +75,37 @@ Só a interface no navegador (sem impressão): `npm run dev`.
 
 O servidor padrão é `https://pdv.lucyan.dev`; dá para trocar na tela de conexão do caixa.
 
-## Instaladores
+## Instaladores e atualização automática
 
-O GitHub Actions compila Windows e macOS a cada push na `main` (instaladores ficam nos
-artefatos do build). Para publicar uma versão:
+Cada versão é publicada no repositório **público** `lucyanpeixoto/credix-pdv-releases`
+(o código deste repo continua privado). O app instalado confere lá ao abrir e a cada 2 h,
+baixa a versão nova em segundo plano e mostra o botão **"Atualizar para x.y.z"** no topo
+e na tela de PIN; ao clicar, instala e reinicia. Com um Pix aguardando, não reinicia.
+
+Para publicar uma versão:
 
 ```bash
-npm version 0.2.0 --no-git-tag-version   # e a mesma versão em src-tauri/tauri.conf.json
-git tag v0.2.0 && git push --tags
+# mesma versão em package.json, src-tauri/tauri.conf.json e src-tauri/Cargo.toml
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
-Isso cria um release em rascunho com o `.exe`/`.msi` (Windows) e o `.dmg` (macOS universal).
+O GitHub Actions compila Windows e macOS, assina as atualizações e publica a release
+(já publicada, não rascunho). Pushes sem tag só guardam os instaladores nos artefatos do build.
 
-> **macOS:** sem assinatura, o Gatekeeper bloqueia na primeira abertura (botão direito → Abrir).
-> Para distribuir de verdade é preciso conta Apple Developer e configurar os secrets de assinatura.
+**Segredos do repositório** (Settings › Secrets and variables › Actions):
+
+| Segredo | O que é |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | conteúdo de `~/.tauri/credix-desktop.key` (gerada com `tauri signer generate`) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | senha da chave (`~/.tauri/credix-desktop.password`) |
+| `RELEASES_TOKEN` | token do GitHub com permissão de escrita em `credix-pdv-releases` |
+
+A chave pública está em `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). **Perdendo a
+chave privada, os caixas instalados não aceitam mais atualizações** e precisam reinstalar à mão:
+guarde uma cópia dela num cofre de senhas.
+
+> **macOS:** sem assinatura da Apple, o Gatekeeper bloqueia na primeira abertura
+> (botão direito → Abrir). A atualização automática funciona assim mesmo.
 
 ## Estrutura
 
@@ -108,6 +125,5 @@ src-tauri/src/printer.rs   envio cru para impressora (TCP, spooler do Windows, C
 
 - Modo offline (fila de vendas em dinheiro/cartão) — precisa de chave de idempotência no `POST /api/sales` do Credix para não duplicar venda ao reenviar
 - Ícone próprio (`npx tauri icon caminho/logo.png`)
-- Atualização automática (`tauri-plugin-updater`)
 - Abertura e fechamento de caixa
 - Guardar o token do terminal no cofre do sistema (Credential Manager / Keychain) em vez do armazenamento do app
