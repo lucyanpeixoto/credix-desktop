@@ -143,6 +143,8 @@
     // Produto com grade: pergunta o tamanho/cor antes de pôr no carrinho.
     if (p.has_variants && !variant) {
       if (!p.variants?.length) return say('error', `“${p.name}” está com grade, mas sem tamanho/cor cadastrado.`)
+      // Com uma variação só não há o que perguntar.
+      if (p.variants.length === 1) return add(p, quantity, p.variants[0])
       picking = { product: p, quantity }
       modal = 'variant'
       return
