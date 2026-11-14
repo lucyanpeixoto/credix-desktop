@@ -108,7 +108,8 @@
       <ConnectionBadge />
       {#if session.cash?.session}
         <button class="drawer" onclick={() => (cashOpen = true)} title="Caixa: sangria, suprimento e fechamento">
-          <Icon name="cash" size={16} /> Gaveta {fmt(session.cash.session.summary.expected_cash)}
+          <Icon name="cash" size={16} />
+          {session.cash.session.summary.expected_cash === null ? 'Caixa aberto' : `Gaveta ${fmt(session.cash.session.summary.expected_cash)}`}
         </button>
       {/if}
       {#if printerReady(session.settings)}
