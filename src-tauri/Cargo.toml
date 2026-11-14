@@ -1,6 +1,6 @@
 [package]
 name = "credix-desktop"
-version = "0.1.2"
+version = "0.2.0"
 description = "Credix PDV - venda e recebimento no balcão"
 authors = ["Lucyan Peixoto"]
 edition = "2021"
@@ -17,6 +17,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing"] }

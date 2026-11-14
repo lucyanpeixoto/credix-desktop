@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
   import ConnectionBadge from '../components/ConnectionBadge.svelte'
+  import UpdateButton from '../components/UpdateButton.svelte'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
   import Logo from '../ui/Logo.svelte'
@@ -141,7 +142,10 @@
         <span>Credix PDV · {session.info?.terminal.name ?? ''}</span>
       </div>
     </div>
-    <ConnectionBadge dark />
+    <div class="status">
+      <ConnectionBadge dark />
+      <UpdateButton dark />
+    </div>
     <div class="clock">
       <strong>{time}</strong>
       <span>{date}</span>
@@ -220,8 +224,11 @@
     flex-direction: column;
     justify-content: space-between;
   }
-  aside > :global(.conn) {
-    align-self: flex-start;
+  .status {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
   }
   .brand {
     display: flex;

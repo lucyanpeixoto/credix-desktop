@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Credix PDV",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "identifier": "dev.lucyan.credix.pdv",
   "build": {
     "frontendDist": "../dist",
@@ -28,7 +28,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "dmg", "app"],
+    "targets": [
+      "nsis",
+      "msi",
+      "dmg",
+      "app"
+    ],
     "category": "Business",
     "shortDescription": "Venda e recebimento no balcão",
     "icon": [
@@ -39,11 +44,30 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "nsis": { "languages": ["PortugueseBR"], "installMode": "currentUser" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "languages": [
+          "PortugueseBR"
+        ],
+        "installMode": "currentUser"
+      }
     },
     "macOS": {
       "minimumSystemVersion": "10.15"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlDMjVENDRCQkRGODBFMzMKUldRekR2aTlTOVFsblBUTzNXcDZZR2tXaGM1Qm56Skh3TkJ3bkxUYW5lbFpaL3ZwVWg4NndqVWQK",
+      "endpoints": [
+        "https://github.com/lucyanpeixoto/credix-desktop-releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

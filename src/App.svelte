@@ -2,6 +2,8 @@
   import { onMount } from 'svelte'
   import CashModal from './lib/components/CashModal.svelte'
   import ConnectionBadge from './lib/components/ConnectionBadge.svelte'
+  import UpdateButton from './lib/components/UpdateButton.svelte'
+  import { updater } from './lib/updater.svelte'
   import { modalStack } from './lib/components/modalStack'
   import { fmt } from './lib/money'
   import SettingsModal from './lib/components/SettingsModal.svelte'
@@ -23,6 +25,7 @@
   onMount(() => {
     session.refresh()
     session.ping()
+    updater.start()
     // Confere a conexão com o servidor a cada 20 s e quando a rede muda.
     const ping = setInterval(() => session.ping(), 20_000)
     const up = () => session.ping()
@@ -101,6 +104,7 @@
         <button class:on={tab === 'sales'} onclick={() => (tab = 'sales')}>Vendas <kbd>F5</kbd></button>
       </nav>
       <span class="spacer"></span>
+      <UpdateButton />
       <ConnectionBadge />
       {#if session.cash?.session}
         <button class="drawer" onclick={() => (cashOpen = true)} title="Caixa: sangria, suprimento e fechamento">

@@ -27,6 +27,8 @@ async fn list_printers() -> Result<Vec<String>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![print_network, print_system, list_printers])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Credix PDV");
