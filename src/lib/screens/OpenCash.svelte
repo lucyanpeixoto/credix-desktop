@@ -1,9 +1,16 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
   import { fmt, parseMoney } from '../money'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
   let amount = $state('')
+  let amountEl = $state<HTMLInputElement>()
+
+  onMount(async () => {
+    await tick()
+    amountEl?.focus()
+  })
   let saving = $state(false)
   let error = $state('')
 
@@ -35,8 +42,7 @@
 
     <label>
       Troco inicial
-      <!-- svelte-ignore a11y_autofocus -->
-      <input class="money" bind:value={amount} inputmode="decimal" placeholder="R$ 0,00" autofocus />
+      <input class="money" bind:this={amountEl} bind:value={amount} inputmode="decimal" placeholder="R$ 0,00" />
     </label>
     {#if last}
       <p class="muted small">

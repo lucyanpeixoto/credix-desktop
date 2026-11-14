@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- App em português: calendário, menus e campos nativos do macOS em pt-BR. -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>pt_BR</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>pt_BR</string>
+  </array>
+</dict>
+</plist>
