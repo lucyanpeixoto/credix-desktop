@@ -29,6 +29,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            use tauri::Manager;
+            // Caixa sempre ocupa a tela toda ao abrir.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.maximize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![print_network, print_system, list_printers])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Credix PDV");

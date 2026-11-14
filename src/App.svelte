@@ -67,6 +67,9 @@
     } else if (e.key === 'F5') {
       e.preventDefault()
       tab = 'sales'
+    } else if (e.key === 'F8' && session.cash?.session) {
+      e.preventDefault()
+      cashOpen = true
     } else if (e.key === 'F12') {
       e.preventDefault()
       settingsOpen = true
@@ -109,7 +112,9 @@
       {#if session.cash?.session}
         <button class="drawer" onclick={() => (cashOpen = true)} title="Caixa: sangria, suprimento e fechamento">
           <Icon name="cash" size={16} />
-          {session.cash.session.summary.expected_cash === null ? 'Caixa aberto' : `Gaveta ${fmt(session.cash.session.summary.expected_cash)}`}
+          {session.cash.session.summary.expected_cash === null ? 'Caixa' : `Caixa · ${fmt(session.cash.session.summary.expected_cash)}`}
+          <span class="sep">Sangria · Fechar</span>
+          <kbd>F8</kbd>
         </button>
       {/if}
       {#if printerReady(session.settings)}
@@ -230,6 +235,16 @@
     font-weight: 700;
     background: var(--ok-bg);
     border-color: #a7f3d0;
+    color: var(--ok);
+  }
+  .drawer .sep {
+    font-weight: 600;
+    opacity: 0.75;
+    padding-left: 8px;
+    border-left: 1px solid #a7f3d0;
+  }
+  .drawer kbd {
+    border-color: #6ee7b7;
     color: var(--ok);
   }
   .drawer:hover:not(:disabled) {

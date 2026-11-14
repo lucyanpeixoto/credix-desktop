@@ -202,6 +202,42 @@
     }
   }
 
+  // Navegação por dia (‹ data ›); o calendário nativo abre ao clicar na data.
+  let dateEl = $state<HTMLInputElement>()
+
+  function shiftDay(delta: number) {
+    const [y, m, d] = date.split('-').map(Number)
+    const next = new Date(y, m - 1, d + delta)
+    const p = (n: number) => String(n).padStart(2, '0')
+    const iso = `${next.getFullYear()}-${p(next.getMonth() + 1)}-${p(next.getDate())}`
+    if (iso > todayIso()) return
+    date = iso
+    refilter()
+  }
+
+  function goToday() {
+    date = todayIso()
+    refilter()
+  }
+
+  function pickDate() {
+    try {
+      dateEl?.showPicker()
+    } catch {
+      dateEl?.focus()
+    }
+  }
+
+  const dayLabel = $derived.by(() => {
+    if (date === todayIso()) return 'Hoje'
+    const [y, m, d] = date.split('-').map(Number)
+    const dt = new Date(y, m - 1, d)
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    if (dt.toDateString() === yesterday.toDateString()) return 'Ontem'
+    return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+  })
+
   const time = (s: Sale) => s.created_at_formatted.split(' ')[1] ?? s.created_at_formatted
   const isToday = $derived(date === todayIso())
 </script>
@@ -223,7 +259,15 @@
         <kbd>F3</kbd>
       </label>
       <div class="row wrap">
-        <input type="date" bind:value={date} max={todayIso()} onchange={refilter} aria-label="Data" />
+        <div class="day">
+          <button class="nav" onclick={() => shiftDay(-1)} aria-label="Dia anterior">‹</button>
+          <button class="label" onclick={pickDate} title="Escolher a data">
+            <Icon name="calendar" size={15} /> {dayLabel}
+          </button>
+          <button class="nav" onclick={() => shiftDay(1)} disabled={isToday} aria-label="Próximo dia">›</button>
+          {#if !isToday}<button class="today" onclick={goToday}>Hoje</button>{/if}
+          <input bind:this={dateEl} class="native" type="date" bind:value={date} max={todayIso()} onchange={refilter} tabindex="-1" aria-hidden="true" />
+        </div>
         <select bind:value={paymentType} onchange={refilter} aria-label="Forma de pagamento">
           <option value="">Todas as formas</option>
           {#each Object.entries(PAYMENT_LABELS).filter(([k]) => !['ajuste', 'desconto'].includes(k)) as [k, v] (k)}
@@ -469,7 +513,37 @@
   .wrap {
     flex-wrap: wrap;
   }
-  .wrap > input,
+  .day {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 220px;
+  }
+  .day .nav {
+    width: 40px;
+    padding: 0;
+    font-size: 20px;
+  }
+  .day .label {
+    flex: 1;
+    gap: 8px;
+    text-transform: capitalize;
+    color: var(--ink);
+  }
+  .day .today {
+    padding: 0 12px;
+    color: var(--brand);
+  }
+  .day .native {
+    position: absolute;
+    left: 44px;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
   .wrap > select {
     width: auto;
     flex: 1 1 150px;
