@@ -67,6 +67,8 @@
     items.reduce((m, i) => (i.product_id ? m.set(i.product_id, (m.get(i.product_id) ?? 0) + i.quantity) : m), new Map<string, number>()),
   )
   const searching = $derived(parseQuantityPrefix(search).term.length >= 2)
+  // Calças em Masculino e em Feminino: o atalho mostra "Calças · Feminino".
+  const repeatedNames = $derived(new Set(categories.map((c) => c.name).filter((n, i, all) => all.indexOf(n) !== i)))
   // Servidor antigo não manda o limite: fica o 5 de antes.
   const lowLimit = $derived(session.company?.low_stock_threshold ?? 5)
 
@@ -369,7 +371,7 @@
       <div class="chips">
         <button class:on={!categoryId} onclick={() => pickCategory(null)}>Todos</button>
         {#each categories as c (c.id)}
-          <button class:on={categoryId === c.id} onclick={() => pickCategory(c.id)}>{c.name}</button>
+          <button class:on={categoryId === c.id} onclick={() => pickCategory(c.id)}>{repeatedNames.has(c.name) ? (c.label ?? c.name) : c.name}</button>
         {/each}
       </div>
     {/if}
