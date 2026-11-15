@@ -409,7 +409,7 @@
                         add(p, 1, v)
                       }}
                     >
-                      {v.label} <small>{vq ? `×${vq}` : Math.max(0, v.stock)}</small>
+                      {v.label}{vq ? '' : ':'} <small>{vq ? `×${vq}` : Math.max(0, v.stock)}</small>
                     </button>
                   {/each}
                   {#if p.variants.length > shown.length}
@@ -813,22 +813,14 @@
     font-size: 12px;
     font-weight: 700;
   }
-  /* Divisória entre o tamanho/cor e a quantidade: "38 | 2", e não "38 2". */
+  /* "38: 2" (estoque) ou "38 ×2" (no carrinho), e não "38 2". */
   .variants-inline button small {
-    margin-left: 2px;
-    padding-left: 6px;
-    border-left: 1px solid var(--line);
     font-size: 11px;
     font-weight: 700;
-    color: var(--ink);
   }
   .variants-inline button.out {
     border-style: dashed;
     color: var(--muted);
-  }
-  .variants-inline button.selected small {
-    border-color: var(--brand-200);
-    color: var(--brand);
   }
   .variants-inline button.out small {
     color: var(--danger);
