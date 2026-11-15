@@ -111,6 +111,8 @@ export interface Product {
 
 export interface ProductVariant {
   id: string
+  /** Código de barras da variação: SKU do produto + número (000023-2). */
+  code?: string | null
   size: string | null
   color: string | null
   label: string
@@ -412,7 +414,12 @@ export class Api {
     })
   }
   productBySku(code: string) {
-    return this.request<{ data: Product }>('GET', `products/sku/${encodeURIComponent(code)}`)
+    // Código da variação (000023-2): matched_variant_id já diz o tamanho/cor;
+    // variant_missing: a variação foi apagada, o caixa escolhe no seletor.
+    return this.request<{ data: Product; matched_variant_id?: string | null; variant_missing?: boolean }>(
+      'GET',
+      `products/sku/${encodeURIComponent(code)}`,
+    )
   }
 
   // Clientes

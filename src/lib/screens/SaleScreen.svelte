@@ -130,7 +130,7 @@
     clearTimeout(timer)
     const { term } = parseQuantityPrefix(search)
     // Só números longos: leitor de código de barras, que termina com Enter.
-    if (/^\d{6,}$/.test(term)) return
+    if (/^\d{6,}(-\d+)?$/.test(term)) return
     timer = setTimeout(loadProducts, 220)
   }
 
@@ -141,12 +141,16 @@
     focusSearch()
   }
 
-  function add(p: Product, quantity = 1, variant: ProductVariant | null = null) {
+  /** Aviso no seletor de grade (leu o código de uma variação que não existe mais). */
+  let variantNotice = $state('')
+
+  function add(p: Product, quantity = 1, variant: ProductVariant | null = null, notice = '') {
     // Produto com grade: pergunta o tamanho/cor antes de pôr no carrinho.
     if (p.has_variants && !variant) {
       if (!p.variants?.length) return say('error', `“${p.name}” está com grade, mas sem tamanho/cor cadastrado.`)
       // Com uma variação só não há o que perguntar.
       if (p.variants.length === 1) return add(p, quantity, p.variants[0])
+      variantNotice = notice
       picking = { product: p, quantity }
       modal = 'variant'
       return
@@ -175,7 +179,10 @@
     // Enter: primeiro o código exato (leitor), depois a busca por nome.
     try {
       const res = await session.api.productBySku(term)
-      return add(res.data, quantity)
+      // Código da variação (000023-2): já entra o tamanho/cor certo.
+      const variant = res.data.variants?.find((v) => v.id === res.matched_variant_id) ?? null
+      const notice = res.variant_missing ? `A variação ${term} não existe mais. Escolha o tamanho/cor.` : ''
+      return add(res.data, quantity, variant, notice)
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 404) return say('error', (e as Error).message)
     }
@@ -526,6 +533,7 @@
     }}
     width="520px"
   >
+    {#if variantNotice}<div class="alert warn">{variantNotice}</div>{/if}
     <p class="muted">Escolha o tamanho e a cor{picking.quantity > 1 ? ` (${picking.quantity} unidades)` : ''}.</p>
     <div class="variants">
       {#each picking.product.variants ?? [] as v, i (v.id)}
