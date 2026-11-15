@@ -12,6 +12,8 @@ export interface Company {
   pix_online: boolean
   late_charges: boolean
   cash_control: boolean
+  /** Até quantas unidades conta como estoque baixo (configurado na loja). */
+  low_stock_threshold?: number
   /** Horário de funcionamento (HH:MM); null sem horário configurado. */
   opening_time?: string | null
   closing_time?: string | null

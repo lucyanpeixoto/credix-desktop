@@ -67,6 +67,8 @@
     items.reduce((m, i) => (i.product_id ? m.set(i.product_id, (m.get(i.product_id) ?? 0) + i.quantity) : m), new Map<string, number>()),
   )
   const searching = $derived(parseQuantityPrefix(search).term.length >= 2)
+  // Servidor antigo não manda o limite: fica o 5 de antes.
+  const lowLimit = $derived(session.company?.low_stock_threshold ?? 5)
 
   const initialsOf = (name: string) =>
     name
@@ -377,7 +379,7 @@
               <span class="bottom">
                 <span class="price">{fmt(p.price)}</span>
                 {#if p.stock !== null}
-                  <span class="stock" class:zero={p.stock <= 0} class:low={p.stock > 0 && p.stock <= 5}>estoque {p.stock}</span>
+                  <span class="stock" class:zero={p.stock <= 0} class:low={p.stock > 0 && p.stock <= lowLimit}>estoque {p.stock}</span>
                 {/if}
               </span>
             {/snippet}
