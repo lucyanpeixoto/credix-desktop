@@ -52,7 +52,6 @@
   let pix = $state<PixCharge | null>(null)
   let modal = $state<'' | 'customer' | 'done'>('')
   let done = $state<{ receipt: Receipt; customer: string; print?: PrintResult } | null>(null)
-  let copied = $state(false)
 
   // Uma chave por recebimento: repetir depois de uma queda não baixa as parcelas duas vezes.
   const attempt = new Attempt()
@@ -228,17 +227,6 @@
       attempt.reset()
       error = 'Pix pago. O recebimento está sendo registrado; confira o cliente em instantes.'
       if (customer) loadCustomer(customer)
-    }
-  }
-
-  async function copyWhatsapp() {
-    if (!done?.receipt.whatsapp_message) return
-    try {
-      await navigator.clipboard.writeText(done.receipt.whatsapp_message)
-      copied = true
-      setTimeout(() => (copied = false), 2000)
-    } catch {
-      // ignorado
     }
   }
 
@@ -442,9 +430,6 @@
       {/if}
     </div>
     {#snippet footer()}
-      {#if done?.receipt.whatsapp_message}
-        <button onclick={copyWhatsapp}>{copied ? 'Copiado!' : 'Copiar p/ WhatsApp'}</button>
-      {/if}
       <button
         disabled={!printerReady(session.settings)}
         onclick={() => done && printReceipt(done.receipt, done.customer).then((r) => done && (done.print = r))}>Imprimir<kbd>P</kbd></button
