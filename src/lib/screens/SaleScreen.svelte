@@ -813,18 +813,25 @@
     font-size: 12px;
     font-weight: 700;
   }
+  /* Divisória entre o tamanho/cor e a quantidade: "38 | 2", e não "38 2". */
   .variants-inline button small {
-    font-size: 10px;
-    font-weight: 600;
-    opacity: 0.6;
+    margin-left: 2px;
+    padding-left: 6px;
+    border-left: 1px solid var(--line);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink);
   }
   .variants-inline button.out {
     border-style: dashed;
     color: var(--muted);
   }
+  .variants-inline button.selected small {
+    border-color: var(--brand-200);
+    color: var(--brand);
+  }
   .variants-inline button.out small {
     color: var(--danger);
-    opacity: 1;
   }
   .name {
     padding-right: 28px;
