@@ -38,7 +38,6 @@
   let loadingDetail = $state(false)
   let detailError = $state('')
   let print = $state<PrintResult | null>(null)
-  let copied = $state(false)
 
   // Cancelamento
   const REASONS = ['Cliente desistiu', 'Lançada errada', 'Troca de forma de pagamento', 'Venda duplicada']
@@ -107,7 +106,6 @@
 
   async function open(s: Sale | undefined) {
     print = null
-    copied = false
     cancelled = null
     menuOpen = false
     if (!s) {
@@ -192,7 +190,7 @@
   const canReceive = $derived(
     !!detail && !!onreceive && !!detail.customer && detail.status !== 'cancelled' && (detail.remaining_amount ?? 0) > 0,
   )
-  const hasMenu = $derived(!!detail && (canReceive || !!detail.whatsapp_message || detail.can_cancel))
+  const hasMenu = $derived(!!detail && (canReceive || detail.can_cancel))
 
   function receive() {
     menuOpen = false
@@ -201,18 +199,6 @@
 
   function closeMenu(e: PointerEvent) {
     if (menuOpen && menuEl && !menuEl.contains(e.target as Node)) menuOpen = false
-  }
-
-  async function copyWhatsapp() {
-    menuOpen = false
-    if (!detail?.whatsapp_message) return
-    try {
-      await navigator.clipboard.writeText(detail.whatsapp_message)
-      copied = true
-      setTimeout(() => (copied = false), 2000)
-    } catch {
-      // ignorado
-    }
   }
 
   function keydown(e: KeyboardEvent) {
@@ -408,9 +394,6 @@
                   {#if canReceive}
                     <button role="menuitem" onclick={receive}><Icon name="cash" size={16} /> Receber</button>
                   {/if}
-                  {#if d.whatsapp_message}
-                    <button role="menuitem" onclick={copyWhatsapp}><Icon name="chat" size={16} /> Copiar p/ WhatsApp</button>
-                  {/if}
                   {#if d.can_cancel}
                     <button role="menuitem" class="danger" onclick={openCancel}><Icon name="x" size={16} /> Cancelar venda</button>
                   {/if}
@@ -483,7 +466,6 @@
         {/if}
 
         {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? (print.message ?? 'Cupom impresso.') : `Não imprimiu: ${print.message}`}</div>{/if}
-        {#if copied}<div class="alert ok">Mensagem copiada. Cole na conversa do cliente no WhatsApp.</div>{/if}
         {#if cancelled}<div class="alert warn">{cancelled}</div>{/if}
       </div>
 
