@@ -94,6 +94,10 @@ export interface Category {
   id: string
   name: string
   parent_id?: string | null
+  /** Departamento da categoria (masculino, feminino…). */
+  department?: string | null
+  /** "Calças · Feminino": usado quando o nome se repete entre departamentos. */
+  label?: string
 }
 
 export interface Product {
