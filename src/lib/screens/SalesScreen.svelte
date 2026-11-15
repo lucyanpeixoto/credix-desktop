@@ -10,7 +10,7 @@
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
-  let { active }: { active: boolean } = $props()
+  let { active, onreceive }: { active: boolean; onreceive?: (s: Sale) => void } = $props()
 
   const STATUS: Record<string, { label: string; cls: string }> = {
     completed: { label: 'Paga', cls: 'ok' },
@@ -109,6 +109,7 @@
     print = null
     copied = false
     cancelled = null
+    menuOpen = false
     if (!s) {
       detail = null
       return
@@ -127,6 +128,7 @@
   }
 
   function openCancel() {
+    menuOpen = false
     reason = ''
     cancelError = ''
     canceling = true
@@ -184,7 +186,25 @@
     printingCarne = false
   }
 
+  // Menu de ações da venda (⋯ ao lado da situação), na mesma lógica do web.
+  let menuOpen = $state(false)
+  let menuEl = $state<HTMLElement>()
+  const canReceive = $derived(
+    !!detail && !!onreceive && !!detail.customer && detail.status !== 'cancelled' && (detail.remaining_amount ?? 0) > 0,
+  )
+  const hasMenu = $derived(!!detail && (canReceive || !!detail.whatsapp_message || detail.can_cancel))
+
+  function receive() {
+    menuOpen = false
+    if (detail && canReceive) onreceive?.(detail)
+  }
+
+  function closeMenu(e: PointerEvent) {
+    if (menuOpen && menuEl && !menuEl.contains(e.target as Node)) menuOpen = false
+  }
+
   async function copyWhatsapp() {
+    menuOpen = false
     if (!detail?.whatsapp_message) return
     try {
       await navigator.clipboard.writeText(detail.whatsapp_message)
@@ -198,6 +218,12 @@
   function keydown(e: KeyboardEvent) {
     if (!active || modalStack.open) return
     const target = e.target as HTMLElement
+    if (menuOpen && e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      menuOpen = false
+      return
+    }
     if (e.key === 'ArrowDown' && list.length) {
       e.preventDefault()
       hl = Math.min(hl + 1, list.length - 1)
@@ -275,7 +301,7 @@
   const isToday = $derived(date === todayIso())
 </script>
 
-<svelte:window onkeydown={keydown} onpointerdowncapture={closePicker} />
+<svelte:window onkeydown={keydown} onpointerdowncapture={closePicker} onpointerdown={closeMenu} />
 
 <div class="screen">
   <section class="listcol">
@@ -370,7 +396,29 @@
           <h2>Venda #{d.code}</h2>
           <span class="muted small">{d.created_at_formatted}{#if d.terminal} · {d.terminal}{/if}</span>
         </div>
-        <span class="badge {STATUS[d.status]?.cls ?? ''}">{STATUS[d.status]?.label ?? d.status}</span>
+        <div class="status">
+          <span class="badge {STATUS[d.status]?.cls ?? ''}">{STATUS[d.status]?.label ?? d.status}</span>
+          {#if hasMenu}
+            <div class="menu" bind:this={menuEl}>
+              <button class="more" class:on={menuOpen} onclick={() => (menuOpen = !menuOpen)} aria-label="Ações da venda" aria-haspopup="menu" aria-expanded={menuOpen}>
+                <Icon name="dots" size={20} />
+              </button>
+              {#if menuOpen}
+                <div class="pop" role="menu">
+                  {#if canReceive}
+                    <button role="menuitem" onclick={receive}><Icon name="cash" size={16} /> Receber</button>
+                  {/if}
+                  {#if d.whatsapp_message}
+                    <button role="menuitem" onclick={copyWhatsapp}><Icon name="chat" size={16} /> Copiar p/ WhatsApp</button>
+                  {/if}
+                  {#if d.can_cancel}
+                    <button role="menuitem" class="danger" onclick={openCancel}><Icon name="x" size={16} /> Cancelar venda</button>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
 
       <div class="scroll">
@@ -435,17 +483,11 @@
         {/if}
 
         {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? (print.message ?? 'Cupom impresso.') : `Não imprimiu: ${print.message}`}</div>{/if}
+        {#if copied}<div class="alert ok">Mensagem copiada. Cole na conversa do cliente no WhatsApp.</div>{/if}
         {#if cancelled}<div class="alert warn">{cancelled}</div>{/if}
       </div>
 
       <div class="actions">
-        {#if d.can_cancel}
-          <button class="danger" onclick={openCancel}>Cancelar venda</button>
-          <span class="spacer"></span>
-        {/if}
-        {#if d.whatsapp_message}
-          <button onclick={copyWhatsapp}>{copied ? 'Copiado!' : 'Copiar p/ WhatsApp'}</button>
-        {/if}
         {#if canCarne}
           <button
             onclick={carne}
@@ -456,7 +498,7 @@
           </button>
         {/if}
         <button class="primary" onclick={reprint} disabled={!printerReady(session.settings) || d.status === 'cancelled'}>
-          <Icon name="printer" size={16} /> Reimprimir <kbd>P</kbd>
+          <Icon name="printer" size={16} /> Imprimir cupom <kbd>P</kbd>
         </button>
       </div>
     {/if}
@@ -709,6 +751,59 @@
   .dhead > div {
     display: grid;
     gap: 2px;
+  }
+  .dhead > .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .menu {
+    position: relative;
+  }
+  .more {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 10px;
+    color: var(--ink-2);
+  }
+  .more.on {
+    border-color: var(--brand);
+    color: var(--brand);
+  }
+  .pop {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    min-width: 220px;
+    display: grid;
+    padding: 6px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+  }
+  .pop button {
+    height: 40px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    box-shadow: none;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .pop button:hover {
+    background: var(--brand-50);
+  }
+  .pop button.danger {
+    color: var(--danger);
+  }
+  .pop button.danger:hover {
+    background: #fef2f2;
   }
   h2 {
     font-size: 20px;

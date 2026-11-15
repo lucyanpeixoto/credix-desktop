@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import type { Sale } from './lib/api'
   import AfterHoursModal from './lib/components/AfterHoursModal.svelte'
   import CashModal from './lib/components/CashModal.svelte'
   import ConnectionBadge from './lib/components/ConnectionBadge.svelte'
@@ -25,7 +26,13 @@
   let cashOpen = $state(false)
   /** Caixa aberto direto no fechamento (venda depois do horário, "abrir o de amanhã"). */
   let cashClosing = $state(false)
+  /** Venda aberta na aba Vendas para receber na aba Receber. */
+  let receiveSale = $state<Sale | null>(null)
 
+  function receiveFrom(s: Sale) {
+    receiveSale = s
+    tab = 'receive'
+  }
   onMount(() => {
     session.refresh()
     session.ping()
@@ -146,10 +153,14 @@
           <SaleScreen active={tab === 'sale' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked} />
         </div>
         <div class="tab" class:hidden={tab !== 'receive' || session.cashBlocked}>
-          <ReceiveScreen active={tab === 'receive' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked} />
+          <ReceiveScreen
+            active={tab === 'receive' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked}
+            sale={receiveSale}
+            onsaleloaded={() => (receiveSale = null)}
+          />
         </div>
         <div class="tab" class:hidden={tab !== 'sales'}>
-          <SalesScreen active={tab === 'sales' && !settingsOpen && !cashOpen} />
+          <SalesScreen active={tab === 'sales' && !settingsOpen && !cashOpen} onreceive={receiveFrom} />
         </div>
       {/key}
     </main>

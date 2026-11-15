@@ -1,12 +1,25 @@
 <script lang="ts">
-  import type { Customer } from '../api'
+  import type { Customer, Sale } from '../api'
   import { Attempt } from '../attempt'
+  import { fmt } from '../money'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
   import Modal from './Modal.svelte'
 
-  let { onpick, onclose }: { onpick: (c: Customer) => void; onclose: () => void } = $props()
+  let {
+    onpick,
+    onclose,
+    onsale,
+  }: {
+    onpick: (c: Customer) => void
+    onclose: () => void
+    /** No Receber: permite buscar pelo número da venda (o do carnê). */
+    onsale?: (s: Sale) => void
+  } = $props()
 
+  let mode = $state<'cliente' | 'venda'>('cliente')
+  let sale = $state<Sale | null>(null)
+  let searchEl: HTMLInputElement | undefined = $state()
   let search = $state('')
   let results = $state<Customer[]>([])
   let active = $state(0)
@@ -26,7 +39,37 @@
     timer = setTimeout(load, 250)
   }
 
+  function setMode(m: 'cliente' | 'venda') {
+    mode = m
+    search = ''
+    results = []
+    sale = null
+    error = ''
+    searchEl?.focus()
+  }
+
+  /** "1165", "#1165" ou o documento do carnê "1165/002-005" → 1165. */
+  const saleCodeOf = (term: string) => term.match(/^#?\s*0*(\d{1,9})(\s*\/.*)?$/)?.[1] ?? null
+
+  async function loadSale() {
+    const code = saleCodeOf(search.trim())
+    sale = null
+    if (!code) return
+    const mine = ++seq
+    loading = true
+    error = ''
+    try {
+      const res = await session.api.sales({ search: code, payment_type: 'crediario' })
+      if (mine === seq) sale = res.data.find((s) => s.customer && s.status !== 'cancelled') ?? null
+    } catch (e) {
+      if (mine === seq) error = (e as Error).message
+    } finally {
+      if (mine === seq) loading = false
+    }
+  }
+
   async function load() {
+    if (mode === 'venda') return loadSale()
     const term = search.trim()
     if (term.length < 2) {
       results = []
@@ -49,6 +92,13 @@
   }
 
   function keydown(e: KeyboardEvent) {
+    if (mode === 'venda') {
+      if (e.key === 'Enter' && sale && onsale) {
+        e.preventDefault()
+        onsale(sale)
+      }
+      return
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       active = Math.min(active + 1, results.length - 1)
@@ -115,18 +165,53 @@
       {#if error}<div class="alert">{error}</div>{/if}
     </form>
   {:else}
+    {#if onsale}
+      <div class="modes">
+        <button class:selected={mode === 'cliente'} onclick={() => setMode('cliente')}>Cliente</button>
+        <button class:selected={mode === 'venda'} onclick={() => setMode('venda')}>Nº da venda</button>
+      </div>
+    {/if}
     <div class="row">
       <!-- svelte-ignore a11y_autofocus -->
       <input
         autofocus
-        placeholder="Nome, CPF, telefone ou código do cliente"
+        bind:this={searchEl}
+        placeholder={mode === 'venda' ? 'Número da venda, como está no carnê' : 'Nome, CPF, telefone ou código do cliente'}
         bind:value={search}
         oninput={onInput}
         onkeydown={keydown}
       />
-      <button class="newbtn" onclick={startCreate}><Icon name="plus" size={16} /> Novo</button>
+      {#if mode === 'cliente'}<button class="newbtn" onclick={startCreate}><Icon name="plus" size={16} /> Novo</button>{/if}
     </div>
     {#if error}<div class="alert">{error}</div>{/if}
+    {#if mode === 'venda'}
+      <div class="list">
+        {#if sale && sale.customer}
+          <button class="item active" onclick={() => sale && onsale?.(sale)}>
+            <span class="avatar"><Icon name="cart" size={18} /></span>
+            <span class="who">
+              <strong>Venda #{sale.code} · {sale.customer.name}</strong>
+              <span>
+                {sale.created_at_formatted}{#if sale.remaining_amount !== undefined} · {sale.remaining_amount > 0
+                    ? `em aberto ${fmt(sale.remaining_amount)}`
+                    : 'sem parcelas em aberto'}{/if}
+              </span>
+            </span>
+            <kbd>Enter</kbd>
+          </button>
+        {:else}
+          <div class="none muted">
+            {#if loading}
+              Buscando…
+            {:else if !saleCodeOf(search.trim())}
+              Digite o número da venda que está no carnê.
+            {:else}
+              Nenhuma venda no crediário com esse número.
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {:else}
     <div class="list">
       {#each results as c, i (c.id)}
         <button class="item" class:active={i === active} onclick={() => onpick(c)} onmouseenter={() => (active = i)}>
@@ -154,11 +239,34 @@
         </div>
       {/each}
     </div>
+    {/if}
   {/if}
 
 </Modal>
 
 <style>
+  .modes {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--soft);
+    justify-self: start;
+  }
+  .modes button {
+    height: 32px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    font-size: 13px;
+  }
+  .modes button.selected {
+    background: #fff;
+    border: 0;
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgb(15 23 42 / 10%);
+  }
   .form {
     display: grid;
     gap: 14px;

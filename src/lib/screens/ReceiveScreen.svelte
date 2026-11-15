@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import type { Customer, PixCharge, Receipt, Receivable } from '../api'
+  import type { Customer, PixCharge, Receipt, Receivable, Sale } from '../api'
   import { Attempt } from '../attempt'
   import CustomerPicker from '../components/CustomerPicker.svelte'
   import Modal from '../components/Modal.svelte'
@@ -12,7 +12,21 @@
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
-  let { active }: { active: boolean } = $props()
+  let {
+    active,
+    sale = null,
+    onsaleloaded,
+  }: { active: boolean; sale?: Sale | null; onsaleloaded?: () => void } = $props()
+
+  // Veio de "Receber" na aba Vendas: abre o cliente com as parcelas dessa venda.
+  $effect(() => {
+    const s = sale
+    if (!s) return
+    untrack(() => {
+      onsaleloaded?.()
+      loadSale(s)
+    })
+  })
 
   type Method = 'dinheiro' | 'pix' | 'debito' | 'credito'
   const METHODS: Method[] = ['dinheiro', 'pix', 'debito', 'credito']
@@ -78,6 +92,15 @@
       installment_ids: selected.length ? selected : undefined,
       waive_surcharge: waive || undefined,
     }
+  }
+
+  /** Busca pelo número da venda (carnê): abre o cliente com as parcelas dessa venda marcadas. */
+  async function loadSale(s: Sale) {
+    if (!s.customer) return
+    await loadCustomer(s.customer as Customer)
+    if (!data) return
+    selected = data.installments.filter((i) => String(i.sale_code) === String(s.code)).map((i) => i.id)
+    if (selected.length) refreshPreview()
   }
 
   async function loadCustomer(c: Customer) {
@@ -402,7 +425,7 @@
 </div>
 
 {#if modal === 'customer'}
-  <CustomerPicker onpick={loadCustomer} onclose={() => (modal = '')} />
+  <CustomerPicker onpick={loadCustomer} onsale={loadSale} onclose={() => (modal = '')} />
 {:else if modal === 'done' && done}
   <Modal title={`Recebimento #${done.receipt.code}`} onclose={() => (modal = '')} width="460px">
     <div class="done">
