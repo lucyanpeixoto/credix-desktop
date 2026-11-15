@@ -7,8 +7,7 @@
   import { modalStack } from '../components/modalStack'
   import PixModal from '../components/PixModal.svelte'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
-  import { printReceipt, type PrintResult } from '../print'
-  import { printerReady } from '../printer'
+  import { canPrintReceipt, printReceipt, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -215,7 +214,7 @@
     data = null
     resetForm()
     const cashIn = receipt.methods.some((m) => m.type === 'dinheiro')
-    if (session.settings.autoPrint && printerReady(session.settings)) {
+    if (session.settings.autoPrint && canPrintReceipt(session.settings)) {
       done.print = await printReceipt(receipt, name, cashIn)
     }
   }
@@ -431,7 +430,7 @@
     </div>
     {#snippet footer()}
       <button
-        disabled={!printerReady(session.settings)}
+        disabled={!canPrintReceipt(session.settings)}
         onclick={() => done && printReceipt(done.receipt, done.customer).then((r) => done && (done.print = r))}>Imprimir<kbd>P</kbd></button
       >
       <button class="primary" onclick={() => (modal = '')}>Novo<kbd>Enter</kbd></button>

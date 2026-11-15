@@ -14,6 +14,8 @@ export interface Company {
   cash_control: boolean
   /** Até quantas unidades conta como estoque baixo (configurado na loja). */
   low_stock_threshold?: number
+  /** Comprovante: cupom da térmica ou meia folha A4 na impressora comum. */
+  receipt_format?: 'termica' | 'meia_a4'
   /** Horário de funcionamento (HH:MM); null sem horário configurado. */
   opening_time?: string | null
   closing_time?: string | null
@@ -150,6 +152,8 @@ export interface Sale {
   id: string
   code: string
   status: string
+  /** Comprovante em meia folha A4 (link assinado). */
+  half_sheet_url?: string
   payment_type: string
   subtotal: number
   discount: number
@@ -202,6 +206,7 @@ export interface Receipt {
   id: string
   code: string
   status: string
+  half_sheet_url?: string
   total: number
   principal: number
   surcharge: number

@@ -1,5 +1,6 @@
 //! Lado nativo do Credix PDV: só o que o navegador não alcança — mandar bytes
-//! ESC/POS para a impressora térmica (rede ou instalada no sistema).
+//! ESC/POS para a impressora térmica (rede ou instalada no sistema) e abrir o
+//! comprovante em meia folha A4 no navegador do computador.
 
 mod printer;
 
@@ -24,6 +25,24 @@ async fn list_printers() -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Abre um link do Credix no navegador padrão (comprovante em meia folha A4,
+/// impresso pela janela de impressão do sistema). Só http(s).
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Link inválido.".into());
+    }
+    #[cfg(target_os = "windows")]
+    // rundll32 em vez de "cmd /c start": o & do link não passa pelo cmd.
+    let result = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url.as_str()]).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(&url).spawn();
+
+    result.map(|_| ()).map_err(|e| format!("Não abriu o navegador: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -41,7 +60,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![print_network, print_system, list_printers])
+        .invoke_handler(tauri::generate_handler![print_network, print_system, list_printers, open_url])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o Credix PDV");
 }

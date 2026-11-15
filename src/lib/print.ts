@@ -4,6 +4,7 @@ import { carneBytes, carneTestBytes, type CarneAdjust } from './carne'
 import {
   cashCloseTicket,
   movementTicket,
+  openInBrowser,
   printerReady,
   receiptTicket,
   saleTicket,
@@ -25,8 +26,25 @@ const base = () => ({
   phone: session.company?.phone,
 })
 
+/** Loja sem térmica: venda e recebimento saem em meia folha A4, pelo navegador. */
+export const halfSheet = (): boolean => session.company?.receipt_format === 'meia_a4'
+
+/** Dá para imprimir o comprovante da venda/recebimento (térmica configurada ou meia folha). */
+export const canPrintReceipt = (s: Settings): boolean => halfSheet() || printerReady(s)
+
+async function openHalfSheet(url: string | undefined): Promise<PrintResult> {
+  if (!url) return { ok: false, message: 'O servidor ainda não manda o comprovante em meia folha. Atualize o Credix.' }
+  try {
+    await openInBrowser(url + (url.includes('?') ? '&' : '?') + 'auto=1')
+    return { ok: true, message: 'Comprovante aberto no navegador para imprimir (meia folha A4).' }
+  } catch (e) {
+    return { ok: false, message: String((e as Error)?.message ?? e) }
+  }
+}
+
 export async function printSale(sale: Sale, opts: { cashTendered?: number; drawer?: boolean } = {}): Promise<PrintResult> {
   const s = session.settings
+  if (halfSheet()) return openHalfSheet(sale.half_sheet_url)
   if (!printerReady(s)) return { ok: false, message: 'Nenhuma impressora configurada.' }
   try {
     await sendToPrinter(s, saleTicket(s, sale, { ...base(), cashTendered: opts.cashTendered }, !!opts.drawer && s.openDrawer))
@@ -38,6 +56,7 @@ export async function printSale(sale: Sale, opts: { cashTendered?: number; drawe
 
 export async function printReceipt(r: Receipt, customer: string, drawer = false): Promise<PrintResult> {
   const s = session.settings
+  if (halfSheet()) return openHalfSheet(r.half_sheet_url)
   if (!printerReady(s)) return { ok: false, message: 'Nenhuma impressora configurada.' }
   try {
     await sendToPrinter(s, receiptTicket(s, r, { ...base(), customer }, drawer && s.openDrawer))
