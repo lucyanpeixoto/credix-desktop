@@ -1,6 +1,6 @@
 [package]
 name = "credix-desktop"
-version = "0.2.14"
+version = "0.2.15"
 description = "Credix PDV - venda e recebimento no balcão"
 authors = ["Lucyan Peixoto"]
 edition = "2021"
