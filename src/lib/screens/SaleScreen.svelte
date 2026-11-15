@@ -7,8 +7,7 @@
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
-  import { printCarne, printSale, type PrintResult } from '../print'
-  import { printerReady } from '../printer'
+  import { canPrintReceipt, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -293,7 +292,7 @@
     reset()
     loadProducts()
     const cashIn = sale.payment_type === 'dinheiro' || (sale.installments ?? []).some((i) => i.status === 'paid')
-    if (session.settings.autoPrint && printerReady(session.settings)) {
+    if (session.settings.autoPrint && canPrintReceipt(session.settings)) {
       done.print = await printSale(sale, { cashTendered, drawer: cashIn })
     }
   }
@@ -641,7 +640,7 @@
       {#if done?.sale.payment_type === 'crediario' && session.settings.carnePrinter}
         <button onclick={carne} disabled={printingCarne}>{printingCarne ? 'Enviando…' : 'Imprimir carnê'}</button>
       {/if}
-      <button onclick={reprint} disabled={!printerReady(session.settings)}>Imprimir <kbd>P</kbd></button>
+      <button onclick={reprint} disabled={!canPrintReceipt(session.settings)}>Imprimir <kbd>P</kbd></button>
       <button class="primary" onclick={() => (modal = '')}>Nova venda <kbd>Enter</kbd></button>
     {/snippet}
   </Modal>

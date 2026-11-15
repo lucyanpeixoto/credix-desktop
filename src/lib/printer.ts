@@ -9,6 +9,15 @@ export const inTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_
 export const printerReady = (s: Settings): boolean =>
   s.printerMode === 'network' ? !!s.printerHost.trim() : s.printerMode === 'system' ? !!s.printerName.trim() : false
 
+/** Abre o link no navegador do computador (comprovante em meia folha A4). */
+export async function openInBrowser(url: string): Promise<void> {
+  if (!inTauri()) {
+    window.open(url, '_blank')
+    return
+  }
+  await invoke('open_url', { url })
+}
+
 export async function sendToPrinter(s: Settings, bytes: number[]): Promise<void> {
   if (!inTauri()) throw new Error('A impressão só funciona no app instalado.')
   if (s.printerMode === 'network') {

@@ -5,8 +5,7 @@
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
   import { fmt, fmtDate, PAYMENT_LABELS, todayIso } from '../money'
-  import { printCarne, printSale, type PrintResult } from '../print'
-  import { printerReady } from '../printer'
+  import { canPrintReceipt, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -479,7 +478,7 @@
             <Icon name="printer" size={16} /> {printingCarne ? 'Enviando…' : 'Imprimir carnê'}
           </button>
         {/if}
-        <button class="primary" onclick={reprint} disabled={!printerReady(session.settings) || d.status === 'cancelled'}>
+        <button class="primary" onclick={reprint} disabled={!canPrintReceipt(session.settings) || d.status === 'cancelled'}>
           <Icon name="printer" size={16} /> Imprimir cupom <kbd>P</kbd>
         </button>
       </div>
