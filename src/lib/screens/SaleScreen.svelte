@@ -170,6 +170,8 @@
       variantNotice = notice
       picking = { product: p, quantity }
       modal = 'variant'
+      // Já abre com o primeiro tamanho/cor destacado para as setas e o Enter.
+      tick().then(() => document.querySelector<HTMLButtonElement>('.variants button')?.focus())
       return
     }
     const existing = items.find((i) => i.product_id === p.id && (i.variant_id ?? null) === (variant?.id ?? null))
@@ -318,6 +320,20 @@
     done.print = await printSale(done.sale, { cashTendered: done.cashTendered })
   }
 
+  const ARROW_STEP: Record<string, 'row' | 1 | -1> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 'row', ArrowDown: 'row' }
+
+  function moveVariantFocus(key: string) {
+    const grid = document.querySelector<HTMLElement>('.variants')
+    const buttons = [...(grid?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+    if (!grid || !buttons.length) return
+    // Colunas da grade como estão na tela (3 hoje).
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length || 1
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    const step = ARROW_STEP[key] === 'row' ? (key === 'ArrowUp' ? -cols : cols) : (ARROW_STEP[key] as number)
+    const next = current < 0 ? 0 : Math.min(buttons.length - 1, Math.max(0, current + step))
+    buttons[next].focus()
+  }
+
   function windowKeydown(e: KeyboardEvent) {
     if (!active) return
     // Teclas 1–9 escolhem o tamanho/cor.
@@ -327,6 +343,12 @@
         e.preventDefault()
         pickVariant(v)
       }
+      return
+    }
+    // Setas andam pela grade de tamanhos/cores; Enter escolhe a destacada.
+    if (modal === 'variant' && picking && e.key in ARROW_STEP) {
+      e.preventDefault()
+      moveVariantFocus(e.key)
       return
     }
     if (modal === 'done') {
@@ -591,7 +613,7 @@
     width="520px"
   >
     {#if variantNotice}<div class="alert warn">{variantNotice}</div>{/if}
-    <p class="muted">Escolha o tamanho e a cor{picking.quantity > 1 ? ` (${picking.quantity} unidades)` : ''}.</p>
+    <p class="muted">Escolha o tamanho e a cor{picking.quantity > 1 ? ` (${picking.quantity} unidades)` : ''}: setas e Enter, ou o número.</p>
     <div class="variants">
       {#each picking.product.variants ?? [] as v, i (v.id)}
         <!-- svelte-ignore a11y_autofocus -->
@@ -1109,6 +1131,13 @@
   .variants button.out {
     border-style: dashed;
     opacity: 0.75;
+  }
+  /* Destacada pelas setas: Enter põe no carrinho. */
+  .variants button:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px rgb(37 99 235 / 20%);
+    opacity: 1;
   }
   .variants button.out small {
     color: var(--danger);
