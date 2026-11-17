@@ -71,6 +71,22 @@
   // Servidor antigo não manda o limite: fica o 5 de antes.
   const lowLimit = $derived(session.company?.low_stock_threshold ?? 5)
 
+  // Cards ou lista: fica gravado no computador.
+  const listView = $derived(session.settings.catalogView === 'list')
+  // Na lista, a grade aparece inteira na linha até este tanto; depois, +N.
+  const LIST_VARIANTS = 8
+
+  function setView(view: 'cards' | 'list') {
+    if (session.settings.catalogView !== view) session.updateSettings({ ...session.settings, catalogView: view })
+    focusSearch()
+  }
+
+  // As setas andam pela busca: o destacado fica sempre à vista.
+  $effect(() => {
+    if (highlighted < 0) return
+    tick().then(() => document.querySelector('.catalog .hl')?.scrollIntoView({ block: 'nearest' }))
+  })
+
   const initialsOf = (name: string) =>
     name
       .split(/\s+/)
@@ -193,7 +209,7 @@
   }
 
   function searchKeydown(e: KeyboardEvent) {
-    const cols = 4
+    const cols = listView ? 1 : 4
     if (e.key === 'Enter') {
       e.preventDefault()
       submitSearch()
@@ -366,17 +382,68 @@
       {/if}
     </label>
 
-    {#if categories.length && !searching}
-      <div class="chips">
-        <button class:on={!categoryId} onclick={() => pickCategory(null)}>Todos</button>
-        {#each categories as c (c.id)}
-          <button class:on={categoryId === c.id} onclick={() => pickCategory(c.id)}>{repeatedNames.has(c.name) ? (c.label ?? c.name) : c.name}</button>
-        {/each}
+    <div class="toolbar">
+      {#if categories.length && !searching}
+        <div class="chips">
+          <button class:on={!categoryId} onclick={() => pickCategory(null)}>Todos</button>
+          {#each categories as c (c.id)}
+            <button class:on={categoryId === c.id} onclick={() => pickCategory(c.id)}>{repeatedNames.has(c.name) ? (c.label ?? c.name) : c.name}</button>
+          {/each}
+        </div>
+      {/if}
+      <div class="view" role="group" aria-label="Exibição dos produtos">
+        <button class:on={!listView} title="Ver em cards" aria-label="Ver em cards" onclick={() => setView('cards')}><Icon name="grid" size={16} /></button>
+        <button class:on={listView} title="Ver em lista" aria-label="Ver em lista" onclick={() => setView('list')}><Icon name="list" size={16} /></button>
       </div>
-    {/if}
+    </div>
+
+    {#snippet variantChip(p: Product, v: ProductVariant)}
+      {@const vq = qtyOf(p.id, v.id)}
+      <button
+        class:selected={!!vq}
+        class:out={v.stock <= 0}
+        title={v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'}
+        onclick={(e) => {
+          e.stopPropagation()
+          add(p, 1, v)
+        }}
+      >
+        {v.label}{vq ? '' : ':'} <small>{vq ? `×${vq}` : Math.max(0, v.stock)}</small>
+      </button>
+    {/snippet}
 
     <div class="grid-wrap">
-      {#if products.length}
+      {#if products.length && listView}
+        <!-- Lista: uma linha por produto, com a grade inteira à mão. -->
+        <div class="list">
+          {#each products as p, i (p.id)}
+            {@const q = qtyById.get(p.id)}
+            {@const grade = p.has_variants && p.variants?.length ? p.variants : []}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div class="prow" role="button" tabindex="-1" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
+              <span class="info">
+                <span class="name">{p.name}</span>
+                {#if p.sku}<span class="sku">SKU {p.sku}</span>{/if}
+              </span>
+              {#if grade.length}
+                <span class="variants-inline">
+                  {#each grade.slice(0, LIST_VARIANTS) as v (v.id)}
+                    {@render variantChip(p, v)}
+                  {/each}
+                  {#if grade.length > LIST_VARIANTS}
+                    <button class="more" title="Ver todas as variações">+{grade.length - LIST_VARIANTS}</button>
+                  {/if}
+                </span>
+              {/if}
+              <span class="stock" class:zero={p.stock !== null && p.stock <= 0} class:low={p.stock !== null && p.stock > 0 && p.stock <= lowLimit}>
+                {p.stock !== null ? `estoque ${p.stock}` : ''}
+              </span>
+              <span class="price">{fmt(p.price)}</span>
+              <span class="qty" class:none={!q}>{q ?? ''}</span>
+            </div>
+          {/each}
+        </div>
+      {:else if products.length}
         <div class="grid">
           {#each products as p, i (p.id)}
             {@const q = qtyById.get(p.id)}
@@ -400,18 +467,7 @@
                 {@render body()}
                 <span class="variants-inline">
                   {#each shown as v (v.id)}
-                    {@const vq = qtyOf(p.id, v.id)}
-                    <button
-                      class:selected={!!vq}
-                      class:out={v.stock <= 0}
-                      title={v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'}
-                      onclick={(e) => {
-                        e.stopPropagation()
-                        add(p, 1, v)
-                      }}
-                    >
-                      {v.label}{vq ? '' : ':'} <small>{vq ? `×${vq}` : Math.max(0, v.stock)}</small>
-                    </button>
+                    {@render variantChip(p, v)}
                   {/each}
                   {#if p.variants.length > shown.length}
                     <button class="more" title="Ver todas as variações">+{p.variants.length - shown.length}</button>
@@ -711,10 +767,41 @@
     background: var(--danger-bg);
     color: var(--danger);
   }
+  .toolbar {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
   .chips {
+    flex: 1;
+    min-width: 0;
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .view {
+    margin-left: auto;
+    flex: none;
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+  .view button {
+    height: 28px;
+    width: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 9px;
+    justify-content: center;
+    color: var(--muted);
+  }
+  .view button.on,
+  .view button.on:hover {
+    background: var(--brand);
+    color: #fff;
   }
   .chips button {
     height: 34px;
@@ -737,6 +824,67 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 12px;
+  }
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .prow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 58px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .prow:hover {
+    border-color: var(--brand-200);
+  }
+  .prow.incart {
+    border-color: var(--brand);
+    box-shadow: inset 0 0 0 1px var(--brand);
+  }
+  .prow.hl {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px rgb(37 99 235 / 20%);
+  }
+  .prow .info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .prow .name {
+    min-height: 0;
+    padding-right: 0;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+  .prow .variants-inline {
+    margin-top: 0;
+    max-width: 50%;
+    justify-content: flex-end;
+  }
+  .prow .stock {
+    flex: none;
+    width: 74px;
+    text-align: right;
+  }
+  .prow .price {
+    flex: none;
+    width: 100px;
+    text-align: right;
+  }
+  .prow .qty {
+    position: static;
+    flex: none;
+  }
+  .prow .qty.none {
+    visibility: hidden;
   }
   .empty {
     padding: 40px 0;

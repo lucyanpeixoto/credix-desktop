@@ -23,6 +23,8 @@ export interface Settings {
   carneDy: number
   /** Negrito no carnê (fita gasta). */
   carneBold: boolean
+  /** Produtos na tela de venda: em cards ou em lista. */
+  catalogView: 'cards' | 'list'
 }
 
 const KEY = 'credix-desktop.settings'
@@ -40,6 +42,7 @@ export const defaults: Settings = {
   carneDx: 0,
   carneDy: 0,
   carneBold: false,
+  catalogView: 'cards',
 }
 
 export function loadSettings(): Settings {
