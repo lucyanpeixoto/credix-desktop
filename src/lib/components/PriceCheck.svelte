@@ -38,6 +38,9 @@
     const mine = ++seq
     loading = true
     error = ''
+    // Sem o resultado antigo na tela: as setas não andam no produto anterior.
+    product = null
+    results = []
     try {
       // Primeiro o código exato (leitor), depois a busca por nome.
       try {
@@ -69,14 +72,49 @@
     tick().then(() => inputEl?.focus())
   }
 
+  // Setas: da busca descem para a lista ou para a grade; na grade andam como
+  // na tela (colunas que couberem) e Enter põe a peça no carrinho. Digitar
+  // (ou passar outra etiqueta) volta para a busca.
+  let wrap = $state<HTMLElement>()
+  const STEP: Record<string, number | 'row'> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 'row', ArrowDown: 'row' }
+
+  function nav(e: KeyboardEvent) {
+    if (!wrap || !inputEl) return
+    const inInput = document.activeElement === inputEl
+    if (!(e.key in STEP)) {
+      if (!inInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) inputEl.focus()
+      return
+    }
+    const items = [...wrap.querySelectorAll<HTMLButtonElement>('.results button, .grade button, .single button')]
+    if (!items.length) return
+    if (inInput) {
+      if (e.key !== 'ArrowDown') return
+      e.preventDefault()
+      const matched = items.findIndex((b) => b.classList.contains('matched'))
+      items[Math.max(0, matched)].focus()
+      return
+    }
+    const idx = items.indexOf(document.activeElement as HTMLButtonElement)
+    if (idx < 0) return
+    e.preventDefault()
+    const grid = items[idx].closest('.grade')
+    const cols = grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length || 1 : 1
+    const step = STEP[e.key] === 'row' ? (e.key === 'ArrowUp' ? -cols : cols) : (STEP[e.key] as number)
+    const next = idx + step
+    if (next < 0) inputEl.focus()
+    else items[Math.min(items.length - 1, next)].focus()
+  }
+
   const stockClass = (n: number) => (n <= 0 ? 'zero' : n <= lowLimit ? 'low' : '')
 </script>
 
 <Modal title="Consultar preço e estoque" {onclose} width="560px">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="pc" bind:this={wrap} onkeydown={nav}>
   <form class="find" onsubmit={lookup}>
     <span class="lens"><Icon name="search" size={18} /></span>
     <!-- svelte-ignore a11y_autofocus -->
-    <input bind:this={inputEl} bind:value={term} autofocus autocomplete="off" spellcheck="false" placeholder="Passe a etiqueta ou digite o nome e Enter" />
+    <input bind:this={inputEl} bind:value={term} autofocus autocomplete="off" spellcheck="false" placeholder="Passe a etiqueta ou digite o nome e Enter · ↓ para escolher" />
   </form>
 
   {#if error}<div class="alert">{error}</div>{/if}
@@ -122,6 +160,7 @@
       {/if}
     </div>
   {/if}
+  </div>
 </Modal>
 
 <style>
@@ -145,6 +184,17 @@
   .results {
     display: grid;
     gap: 6px;
+  }
+  .results button:focus,
+  .grade button:focus,
+  .single button:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px rgb(37 99 235 / 20%);
+  }
+  .pc {
+    display: grid;
+    gap: 14px;
   }
   .results button {
     justify-content: space-between;
