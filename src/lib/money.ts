@@ -52,6 +52,8 @@ export const PAYMENT_LABELS: Record<string, string> = {
   debito: 'Débito',
   credito: 'Crédito',
   crediario: 'Crediário',
+  misto: 'Misto',
+  vale_troca: 'Vale-troca',
   ajuste: 'Ajuste',
   desconto: 'Desconto',
 }

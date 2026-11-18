@@ -409,7 +409,7 @@
             {#if d.customer?.cpf_formatted || d.customer?.phone_formatted}<span class="muted small">{[d.customer?.cpf_formatted, d.customer?.phone_formatted].filter(Boolean).join(' · ')}</span>{/if}
           </div>
           <div><span class="lbl">Vendedor</span><strong>{d.seller?.name ?? d.user?.name ?? '—'}</strong></div>
-          <div><span class="lbl">Pagamento</span><strong>{PAYMENT_LABELS[d.payment_type] ?? d.payment_type}</strong></div>
+          <div><span class="lbl">Pagamento</span><strong>{d.payment_label ?? PAYMENT_LABELS[d.payment_type] ?? d.payment_type}{#if d.credit_used} · vale-troca {fmt(d.credit_used)}{/if}</strong></div>
           {#if d.payment_type === 'crediario'}
             <div><span class="lbl">Falta pagar</span><strong class:red={(d.remaining_amount ?? 0) > 0}>{fmt(d.remaining_amount)}</strong></div>
           {/if}

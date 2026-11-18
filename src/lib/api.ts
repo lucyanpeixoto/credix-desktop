@@ -132,6 +132,8 @@ export interface Customer {
   cpf_formatted: string | null
   phone_formatted: string | null
   overdue_count?: number
+  /** Saldo do vale-troca (troca feita antes, ainda não usada). */
+  credit_balance?: number
 }
 
 export interface Installment {
@@ -155,6 +157,12 @@ export interface Sale {
   /** Comprovante em meia folha A4 (link assinado). */
   half_sheet_url?: string
   payment_type: string
+  /** Pagamento misto: cada forma com o valor. */
+  payment_methods?: { payment_type: string; label: string; amount: number }[]
+  payment_label?: string
+  /** Parte paga com vale-troca. */
+  credit_used?: number
+  returned_amount?: number
   subtotal: number
   discount: number
   total: number
@@ -165,7 +173,16 @@ export interface Sale {
   total_paid?: number
   remaining_amount?: number
   notes?: string | null
-  items?: { product_name: string; quantity: number; unit_price: number; subtotal: number; is_custom?: boolean }[]
+  items?: {
+    id?: string
+    product_name: string
+    variant_label?: string | null
+    quantity: number
+    returned_quantity?: number
+    unit_price: number
+    subtotal: number
+    is_custom?: boolean
+  }[]
   installments?: Installment[]
 }
 
@@ -187,12 +204,21 @@ export interface SaleDetail extends Sale {
   }[]
 }
 
+/** Troca: total das peças, o que abate do crediário e o que vira vale. */
+export interface ExchangePlan {
+  total: number
+  debt: number
+  credit: number
+}
+
 export interface SaleFilters {
   date?: string
   search?: string
   payment_type?: string
   status?: string
   this_terminal?: boolean
+  /** Troca: vendas dos últimos 90 dias, pelo número, cliente ou código da peça. */
+  scope?: 'troca'
   page?: number
 }
 
@@ -459,6 +485,14 @@ export class Api {
   }
   sales(filters: SaleFilters) {
     return this.request<SaleList>('GET', 'sales', { query: { ...filters } })
+  }
+
+  // Troca no caixa: as peças voltam e o valor vira vale-troca do cliente.
+  exchangePreview(saleId: string, quantities: Record<string, number>) {
+    return this.request<ExchangePlan>('POST', `sales/${saleId}/exchange/preview`, { body: { quantities } })
+  }
+  exchange(saleId: string, body: { quantities: Record<string, number>; customer_id?: string | null; reason?: string | null }, key?: string) {
+    return this.request<ExchangePlan & { return_id: string; customer: Customer | null }>('POST', `sales/${saleId}/exchange`, { body, key })
   }
 
   // Recebimento

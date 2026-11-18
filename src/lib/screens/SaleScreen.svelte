@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { ApiError, type Category, type Customer, type Product, type ProductVariant, type Sale } from '../api'
-  import { fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
+  import { cashDueOf, fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
   import Checkout from '../components/Checkout.svelte'
   import CustomerPicker from '../components/CustomerPicker.svelte'
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
+  import ExchangeModal from '../components/ExchangeModal.svelte'
   import PriceCheck from '../components/PriceCheck.svelte'
   import { loadHeld, MAX_HELD, saveHeld, type HeldSale } from '../held'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
@@ -33,7 +34,7 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'held' | 'lookup'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'held' | 'lookup' | 'exchange'>('')
   let picking = $state<{ product: Product; quantity: number } | null>(null)
 
   function pickVariant(v: ProductVariant) {
@@ -172,8 +173,6 @@
       variantNotice = notice
       picking = { product: p, quantity }
       modal = 'variant'
-      // Já abre com o primeiro tamanho/cor destacado para as setas e o Enter.
-      tick().then(() => document.querySelector<HTMLButtonElement>('.variants button')?.focus())
       return
     }
     const existing = items.find((i) => i.product_id === p.id && (i.variant_id ?? null) === (variant?.id ?? null))
@@ -353,6 +352,14 @@
   const heldCount = (h: HeldSale) => h.items.reduce((s, i) => s + i.quantity, 0)
   const heldTime = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
+  /** Troca feita: o cliente vem para a venda com o vale, que abate na finalização. */
+  function exchanged(c: Customer, credit: number) {
+    customer = c
+    modal = ''
+    say('ok', `Vale-troca de ${fmt(credit)} para ${c.name.split(' ')[0]}. Passe as peças novas.`)
+    focusSearch()
+  }
+
   /** Da consulta (F10) direto para o carrinho. */
   function addFromLookup(p: Product, v: ProductVariant | null) {
     modal = ''
@@ -365,7 +372,10 @@
     session.loadCash()
     reset()
     loadProducts()
-    const cashIn = sale.payment_type === 'dinheiro' || (sale.installments ?? []).some((i) => i.status === 'paid')
+    const cashIn =
+      (sale.payment_type === 'dinheiro' && sale.total - (sale.credit_used ?? 0) > 0) ||
+      (sale.payment_methods ?? []).some((m) => m.payment_type === 'dinheiro') ||
+      (sale.installments ?? []).some((i) => i.status === 'paid')
     if (session.settings.autoPrint && canPrintReceipt(session.settings)) {
       done.print = await printSale(sale, { cashTendered, drawer: cashIn })
     }
@@ -431,6 +441,9 @@
     if (fn) {
       e.preventDefault()
       fn()
+    } else if (e.ctrlKey && e.key.toLowerCase() === 't') {
+      e.preventDefault()
+      modal = 'exchange'
     } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
       // Ctrl+E: com carrinho, põe em espera; vazio, abre a lista para retomar.
       e.preventDefault()
@@ -585,6 +598,9 @@
         {#if customer.overdue_count}
           <div class="alert warn row"><Icon name="alert" size={16} /> {customer.overdue_count} parcela(s) em atraso</div>
         {/if}
+        {#if (customer.credit_balance ?? 0) > 0}
+          <div class="alert ok row">Vale-troca de {fmt(customer.credit_balance ?? 0)}: abate na finalização.</div>
+        {/if}
       {:else}
         <button class="pick" onclick={() => (modal = 'customer')}>
           <Icon name="user" size={18} />
@@ -645,7 +661,10 @@
         {/if}
         <button class:held-on={held.length > 0} disabled={!held.length} onclick={() => (modal = 'held')}>Em espera{held.length ? ` (${held.length})` : ''}</button>
       </div>
-      <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar preço e estoque <kbd>F10</kbd></button>
+      <div class="grid2">
+        <button class="ghost link lookup" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
+        <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar <kbd>F10</kbd></button>
+      </div>
     </div>
   </aside>
 </div>
@@ -742,6 +761,14 @@
       <button class="primary" type="submit" form="total" disabled={!!totalProblem}>Aplicar</button>
     {/snippet}
   </Modal>
+{:else if modal === 'exchange'}
+  <ExchangeModal
+    ondone={exchanged}
+    onclose={() => {
+      modal = ''
+      focusSearch()
+    }}
+  />
 {:else if modal === 'lookup'}
   <PriceCheck
     {lowLimit}
@@ -807,9 +834,12 @@
   <Modal title={`Venda #${done.sale.code} concluída`} onclose={() => (modal = '')} width="460px">
     <div class="done">
       <div class="row"><span class="muted">Total</span><span class="spacer"></span><strong>{fmt(done.sale.total)}</strong></div>
-      <div class="row"><span class="muted">Pagamento</span><span class="spacer"></span><span>{PAYMENT_LABELS[done.sale.payment_type]}</span></div>
-      {#if done.cashTendered && done.cashTendered > done.sale.total}
-        <div class="money-box center"><span>Troco</span><strong>{fmt(done.cashTendered - done.sale.total)}</strong></div>
+      {#if done.sale.credit_used}
+        <div class="row"><span class="muted">Vale-troca</span><span class="spacer"></span><span class="green">− {fmt(done.sale.credit_used)}</span></div>
+      {/if}
+      <div class="row"><span class="muted">Pagamento</span><span class="spacer"></span><span>{done.sale.payment_label ?? PAYMENT_LABELS[done.sale.payment_type]}</span></div>
+      {#if done.cashTendered && done.cashTendered > cashDueOf(done.sale)}
+        <div class="money-box center"><span>Troco</span><strong>{fmt(round2(done.cashTendered - cashDueOf(done.sale)))}</strong></div>
       {/if}
       {#if done.sale.payment_type === 'crediario' && done.sale.installments?.length}
         <div class="muted small">
