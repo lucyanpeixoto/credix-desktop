@@ -6,6 +6,8 @@
   import CustomerPicker from '../components/CustomerPicker.svelte'
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
+  import PriceCheck from '../components/PriceCheck.svelte'
+  import { loadHeld, MAX_HELD, saveHeld, type HeldSale } from '../held'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
   import { canPrintReceipt, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
@@ -31,7 +33,7 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'held' | 'lookup'>('')
   let picking = $state<{ product: Product; quantity: number } | null>(null)
 
   function pickVariant(v: ProductVariant) {
@@ -303,6 +305,60 @@
     search = ''
   }
 
+  // ── Vendas em espera ─────────────────────────────────────────
+  let held = $state<HeldSale[]>(loadHeld())
+
+  /** Tira o carrinho do caixa e guarda; o caixa fica livre para o próximo. */
+  function holdSale(): boolean {
+    if (!items.length) return false
+    if (held.length >= MAX_HELD) {
+      say('error', `Já há ${MAX_HELD} vendas em espera. Retome ou descarte uma.`)
+      return false
+    }
+    held = [
+      { id: newKey(), at: new Date().toISOString(), seller: session.seller?.name ?? null, customer, items: $state.snapshot(items), discount },
+      ...held,
+    ]
+    saveHeld(held)
+    say('ok', `Venda em espera${customer ? ` (${customer.name})` : ''}`)
+    reset()
+    focusSearch()
+    return true
+  }
+
+  /** Volta a venda ao caixa; a que estava aberta vai para a espera no lugar. */
+  function resumeHeld(h: HeldSale) {
+    // Sai da lista antes: com a lista cheia, a aberta ainda cabe no lugar dela.
+    held = held.filter((x) => x.id !== h.id)
+    saveHeld(held)
+    holdSale()
+    items = h.items
+    customer = h.customer
+    discount = Math.min(h.discount, subtotalOf(h.items))
+    modal = ''
+    say('ok', 'Venda retomada')
+    focusSearch()
+  }
+
+  function dropHeld(h: HeldSale) {
+    held = held.filter((x) => x.id !== h.id)
+    saveHeld(held)
+    if (!held.length) {
+      modal = ''
+      focusSearch()
+    }
+  }
+
+  const heldTotal = (h: HeldSale) => round2(Math.max(0, subtotalOf(h.items) - h.discount))
+  const heldCount = (h: HeldSale) => h.items.reduce((s, i) => s + i.quantity, 0)
+  const heldTime = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  /** Da consulta (F10) direto para o carrinho. */
+  function addFromLookup(p: Product, v: ProductVariant | null) {
+    modal = ''
+    add(p, 1, v)
+  }
+
   async function finished(sale: Sale, cashTendered: number | undefined) {
     done = { sale, cashTendered }
     modal = 'done'
@@ -369,11 +425,17 @@
       F7: () => items.length && openDiscount(),
       F8: () => items.length && openTotal(),
       F9: () => items.length && (modal = 'checkout'),
+      F10: () => (modal = 'lookup'),
     }
     const fn = map[e.key]
     if (fn) {
       e.preventDefault()
       fn()
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
+      // Ctrl+E: com carrinho, põe em espera; vazio, abre a lista para retomar.
+      e.preventDefault()
+      if (items.length) holdSale()
+      else if (held.length) modal = 'held'
     } else if (e.key === 'Delete' && e.ctrlKey && items.length) {
       e.preventDefault()
       modal = 'clear'
@@ -575,6 +637,15 @@
         <button onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
         <button class="danger" disabled={!items.length} onclick={() => (modal = 'clear')}>Cancelar <kbd>Ctrl+Del</kbd></button>
       </div>
+      <div class="grid2">
+        {#if items.length || !held.length}
+          <button disabled={!items.length} onclick={holdSale} title="O cliente foi ao provador? Guarde a venda e atenda o próximo.">Pôr em espera <kbd>Ctrl+E</kbd></button>
+        {:else}
+          <button class="held-on" onclick={() => (modal = 'held')}>Retomar venda <kbd>Ctrl+E</kbd></button>
+        {/if}
+        <button class:held-on={held.length > 0} disabled={!held.length} onclick={() => (modal = 'held')}>Em espera{held.length ? ` (${held.length})` : ''}</button>
+      </div>
+      <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar preço e estoque <kbd>F10</kbd></button>
     </div>
   </aside>
 </div>
@@ -670,6 +741,44 @@
       <button onclick={() => (modal = '')}>Voltar</button>
       <button class="primary" type="submit" form="total" disabled={!!totalProblem}>Aplicar</button>
     {/snippet}
+  </Modal>
+{:else if modal === 'lookup'}
+  <PriceCheck
+    {lowLimit}
+    onadd={addFromLookup}
+    onclose={() => {
+      modal = ''
+      focusSearch()
+    }}
+  />
+{:else if modal === 'held'}
+  <Modal
+    title="Vendas em espera"
+    onclose={() => {
+      modal = ''
+      focusSearch()
+    }}
+    width="560px"
+  >
+    {#if items.length}
+      <div class="alert warn">A venda aberta agora vai para a espera no lugar da que você retomar.</div>
+    {/if}
+    <div class="held">
+      {#each held as h (h.id)}
+        <div class="held-row">
+          <button class="held-pick" onclick={() => resumeHeld(h)}>
+            <span class="held-who">
+              <strong>{h.customer?.name ?? 'Consumidor'}</strong>
+              <small>{heldCount(h)} {heldCount(h) === 1 ? 'peça' : 'peças'} · {h.items.map((i) => i.name).slice(0, 2).join(', ')}{h.items.length > 2 ? '…' : ''}</small>
+              <small>{heldTime(h.at)}{h.seller ? ` · ${h.seller}` : ''}</small>
+            </span>
+            <strong class="num">{fmt(heldTotal(h))}</strong>
+          </button>
+          <button class="ghost danger" title="Descartar esta venda" aria-label="Descartar" onclick={() => dropHeld(h)}><Icon name="x" size={16} /></button>
+        </div>
+      {/each}
+    </div>
+    <p class="muted">O estoque só baixa quando a venda é finalizada. As vendas em espera ficam neste computador.</p>
   </Modal>
 {:else if modal === 'clear'}
   <Modal title="Cancelar venda?" onclose={() => (modal = '')} width="400px">
@@ -1103,6 +1212,49 @@
   .info .variant {
     color: var(--brand);
     font-weight: 700;
+  }
+  .held-on {
+    border-color: var(--warn);
+    color: var(--warn);
+    background: var(--warn-bg);
+  }
+  .lookup {
+    height: 30px;
+    justify-content: center;
+    font-size: 13px;
+  }
+  .held {
+    display: grid;
+    gap: 8px;
+  }
+  .held-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .held-pick {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    padding: 10px 14px;
+    justify-content: space-between;
+    text-align: left;
+  }
+  .held-who {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .held-who small {
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .held-row .ghost {
+    height: auto;
+    padding: 0 10px;
   }
   .variants {
     display: grid;
