@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { CashMovement, CashSession, Receipt, Sale } from './api'
+import { cashDueOf } from './cart'
 import { Ticket } from './escpos'
 import { fmt, fmtDate, PAYMENT_LABELS } from './money'
 import type { Settings } from './settings'
@@ -76,10 +77,18 @@ export function saleTicket(s: Settings, sale: Sale, extra: SaleTicketExtra, open
     t.pair('Desconto', `-${fmt(sale.discount)}`)
   }
   t.bold(true).pair('TOTAL', fmt(sale.total)).bold(false)
-  t.pair('Pagamento', PAYMENT_LABELS[sale.payment_type] ?? sale.payment_type)
-  if (extra.cashTendered && extra.cashTendered > sale.total) {
+  const credit = sale.credit_used ?? 0
+  if (credit > 0) t.pair('Vale-troca', `-${fmt(credit)}`)
+  const cashDue = cashDueOf(sale)
+  if (sale.payment_type === 'misto' && sale.payment_methods?.length) {
+    t.line('Pagamento:')
+    for (const m of sale.payment_methods) t.pair(`  ${PAYMENT_LABELS[m.payment_type] ?? m.label}`, fmt(m.amount))
+  } else {
+    t.pair('Pagamento', sale.payment_label ?? PAYMENT_LABELS[sale.payment_type] ?? sale.payment_type)
+  }
+  if (extra.cashTendered && cashDue > 0 && extra.cashTendered > cashDue) {
     t.pair('Recebido', fmt(extra.cashTendered))
-    t.pair('Troco', fmt(extra.cashTendered - sale.total))
+    t.pair('Troco', fmt(extra.cashTendered - cashDue))
   }
   const inst = sale.installments ?? []
   if (sale.payment_type === 'crediario' && inst.length) {

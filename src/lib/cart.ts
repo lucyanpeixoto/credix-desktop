@@ -1,4 +1,4 @@
-import type { Product, ProductVariant } from './api'
+import type { Product, ProductVariant, Sale } from './api'
 import { round2 } from './money'
 
 export interface CartItem {
@@ -50,4 +50,15 @@ export function parseQuantityPrefix(input: string): { quantity: number; term: st
   const m = input.trim().match(/^(\d{1,4})\s*[*xX]\s*(.+)$/)
   if (m) return { quantity: Math.max(1, Number(m[1])), term: m[2].trim() }
   return { quantity: 1, term: input.trim() }
+}
+
+/**
+ * O que a venda cobrou em dinheiro (para o troco): o total menos o vale-troca,
+ * ou, no misto, só a parte em dinheiro.
+ */
+export function cashDueOf(sale: Sale): number {
+  if (sale.payment_type === 'misto') {
+    return round2((sale.payment_methods ?? []).filter((m) => m.payment_type === 'dinheiro').reduce((s, m) => s + m.amount, 0))
+  }
+  return round2(sale.total - (sale.credit_used ?? 0))
 }

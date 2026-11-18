@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, type Snippet } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import Icon from '../ui/Icon.svelte'
   import { modalStack } from './modalStack'
 
@@ -12,7 +12,18 @@
   }: { title: string; onclose: () => void; width?: string; children: Snippet; footer?: Snippet } = $props()
 
   const id = Symbol()
-  onMount(() => modalStack.push(id))
+  let box = $state<HTMLElement>()
+  onMount(() => {
+    const release = modalStack.push(id)
+    // O autofocus do Svelte só age com nada focado, e no caixa a busca da
+    // venda está sempre focada: o modal abria sem cursor (o leitor e as setas
+    // iam para trás). Foca aqui o campo marcado com autofocus.
+    tick().then(() => {
+      if (!box || box.contains(document.activeElement)) return
+      box.querySelector<HTMLElement>('[autofocus]')?.focus()
+    })
+    return release
+  })
 
   function keydown(e: KeyboardEvent) {
     // Com um modal sobre outro, o Esc fecha só o de cima.
@@ -28,7 +39,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="modal panel" style:width role="dialog" aria-modal="true" aria-label={title}>
+  <div class="modal panel" bind:this={box} style:width role="dialog" aria-modal="true" aria-label={title}>
     <header>
       <h2>{title}</h2>
       <button class="ghost close" onclick={onclose} aria-label="Fechar"><Icon name="x" size={16} /> <kbd>Esc</kbd></button>

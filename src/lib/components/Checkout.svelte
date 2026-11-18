@@ -18,21 +18,52 @@
   }: {
     items: CartItem[]
     discount: number
+    /** Cliente da venda; com saldo de vale-troca, ele abate o total. */
     customer: Customer | null
     oncustomer: (c: Customer) => void
     ondone: (sale: Sale, cashTendered: number | undefined) => void
     onclose: () => void
   } = $props()
 
-  type Pay = 'dinheiro' | 'pix' | 'debito' | 'credito' | 'pix_online' | 'crediario'
+  type Pay = 'dinheiro' | 'pix' | 'debito' | 'credito' | 'pix_online' | 'misto' | 'crediario'
   const options = $derived<Pay[]>(
     session.pixOnline
-      ? ['dinheiro', 'pix_online', 'pix', 'debito', 'credito', 'crediario']
-      : ['dinheiro', 'pix', 'debito', 'credito', 'crediario'],
+      ? ['dinheiro', 'pix_online', 'pix', 'debito', 'credito', 'misto', 'crediario']
+      : ['dinheiro', 'pix', 'debito', 'credito', 'misto', 'crediario'],
   )
 
   const subtotal = $derived(round2(items.reduce((s, i) => s + i.unit_price * i.quantity, 0)))
   const total = $derived(round2(subtotal - discount))
+
+  // Vale-troca do cliente: já vem abatendo; o caixa pode não usar.
+  const balance = $derived(round2(Math.max(0, customer?.credit_balance ?? 0)))
+  let useCredit = $state(true)
+  const credit = $derived(useCredit && customer ? round2(Math.min(balance, total)) : 0)
+  /** O que o cliente paga agora, depois do vale. */
+  const due = $derived(round2(total - credit))
+
+  // Pagamento misto: de 2 a 4 formas. A última linha vazia completa o que falta.
+  type Split = 'dinheiro' | 'pix' | 'debito' | 'credito'
+  const SPLITS: Split[] = ['dinheiro', 'pix', 'debito', 'credito']
+  let parts = $state<{ type: Split; amount: string }[]>([
+    { type: 'dinheiro', amount: '' },
+    { type: 'credito', amount: '' },
+  ])
+  const typedSum = $derived(round2(parts.slice(0, -1).reduce((s, p) => s + parseMoney(p.amount), 0)))
+  const lastAuto = $derived(round2(Math.max(0, due - typedSum)))
+  const partAmounts = $derived(parts.map((p, i) => (i === parts.length - 1 && !p.amount.trim() ? lastAuto : parseMoney(p.amount))))
+  const partsSum = $derived(round2(partAmounts.reduce((s, v) => s + v, 0)))
+  const cashPart = $derived(round2(parts.reduce((s, p, i) => s + (p.type === 'dinheiro' ? partAmounts[i] : 0), 0)))
+  /** No misto com dinheiro: quanto o cliente deu em notas, para o troco. */
+  let splitTendered = $state('')
+  const splitCash = $derived(parseMoney(splitTendered))
+  const splitChange = $derived(cashPart > 0 && splitCash > cashPart ? round2(splitCash - cashPart) : 0)
+
+  function addPart() {
+    if (parts.length >= 4) return
+    const used = new Set(parts.map((p) => p.type))
+    parts.push({ type: SPLITS.find((t) => !used.has(t)) ?? 'credito', amount: '' })
+  }
 
   let payment = $state<Pay>('dinheiro')
   let tendered = $state('')
@@ -52,9 +83,11 @@
   const attempt = new Attempt()
 
   const cash = $derived(parseMoney(tendered))
-  const change = $derived(payment === 'dinheiro' && cash > total ? round2(cash - total) : 0)
+  const change = $derived(payment === 'dinheiro' && cash > due ? round2(cash - due) : 0)
   const down = $derived(parseMoney(downPayment))
-  const financed = $derived(round2(Math.max(0, total - down)))
+  const financed = $derived(round2(Math.max(0, due - down)))
+  // O vale paga tudo: fecha sem receber nada (em "Dinheiro", com zero).
+  const paidByCredit = $derived(total > 0 && due <= 0)
   const plan = $derived(splitInstallments(financed, Math.max(1, Math.min(60, Number(count) || 1))))
   const schedule = $derived(
     plan.map((amount, i) => ({ label: `${i + 1}/${plan.length}`, due: firstDue ? dueDateIso(firstDue, days, i) : '', amount })),
@@ -78,13 +111,20 @@
 
   const problem = $derived.by(() => {
     if (total <= 0) return 'O total precisa ser maior que zero.'
-    if (payment === 'dinheiro' && tendered.trim() && cash + 0.004 < total) return 'Valor recebido menor que o total.'
+    if (paidByCredit) return ''
+    if (payment === 'dinheiro' && tendered.trim() && cash + 0.004 < due) return 'Valor recebido menor que o total.'
+    if (payment === 'misto') {
+      if (partAmounts.some((v) => v <= 0)) return 'Informe o valor de cada forma (ou tire a linha).'
+      if (Math.abs(partsSum - due) >= 0.005)
+        return partsSum < due ? `Falta ${fmt(round2(due - partsSum))} para fechar.` : `Passou ${fmt(round2(partsSum - due))} do total.`
+      if (splitTendered.trim() && splitCash + 0.004 < cashPart) return 'Dinheiro recebido menor que a parte em dinheiro.'
+    }
     if (payment === 'crediario') {
       if (!customer) return 'Crediário precisa de um cliente.'
       if (!(Number(count) >= 1 && Number(count) <= 60)) return 'Parcelas: de 1 a 60.'
       if (!(Number(days) >= 1 && Number(days) <= 365)) return 'Intervalo: de 1 a 365 dias.'
       if (firstDue && firstDue < todayIso()) return 'O 1º vencimento não pode ser no passado.'
-      if (down > 0 && down >= total) return 'A entrada deve ser menor que o total.'
+      if (down > 0 && down >= due) return 'A entrada deve ser menor que o total.'
     }
     return ''
   })
@@ -93,9 +133,11 @@
     if (saving || problem || pix) return
     saving = true
     error = ''
+    const type: Pay = paidByCredit ? 'dinheiro' : payment
     const body: Record<string, unknown> = {
-      payment_type: payment,
+      payment_type: type,
       customer_id: customer?.id ?? null,
+      use_credit: credit > 0 || null,
       discount: discount || null,
       items: items.map((i) =>
         i.product_id
@@ -103,7 +145,10 @@
           : { description: i.name, unit_price: i.unit_price, quantity: i.quantity },
       ),
     }
-    if (payment === 'crediario') {
+    if (type === 'misto') {
+      body.methods = parts.map((p, i) => ({ type: p.type, amount: partAmounts[i] }))
+    }
+    if (type === 'crediario') {
       Object.assign(body, {
         installment_count: Number(count),
         days_between_installments: Number(days),
@@ -118,7 +163,7 @@
         pendingSale = sale
         pix = sale.pix
       } else {
-        ondone(sale, payment === 'dinheiro' && cash > 0 ? cash : undefined)
+        ondone(sale, type === 'dinheiro' && cash > 0 ? cash : type === 'misto' && splitCash > 0 ? splitCash : undefined)
       }
     } catch (e) {
       error = (e as Error).message
@@ -155,8 +200,8 @@
       confirm()
       return
     }
-    // Teclas 1–6 escolhem a forma (fora dos campos de texto).
-    if (!typing && /^[1-6]$/.test(e.key)) {
+    // Teclas 1–7 escolhem a forma (fora dos campos de texto).
+    if (!typing && /^[1-7]$/.test(e.key)) {
       const opt = options[Number(e.key) - 1]
       if (opt) payment = opt
     }
@@ -167,10 +212,23 @@
 
 <Modal title="Finalizar venda" {onclose} width="620px">
   <div class="total">
-    <span class="muted">Total</span>
-    <strong>{fmt(total)}</strong>
+    <span class="muted">{credit > 0 ? 'A pagar' : 'Total'}</span>
+    <strong>{fmt(due)}</strong>
   </div>
 
+  {#if balance > 0 && customer}
+    <label class="credit" class:off={!useCredit}>
+      <input type="checkbox" bind:checked={useCredit} />
+      <span>
+        Vale-troca de {customer.name.split(' ')[0]}: <strong>{fmt(balance)}</strong>
+        {#if useCredit}· abate {fmt(credit)} de {fmt(total)}{#if balance > credit}{' '}· sobram {fmt(round2(balance - credit))}{/if}{/if}
+      </span>
+    </label>
+  {/if}
+
+  {#if paidByCredit}
+    <div class="alert ok">O vale-troca paga a venda inteira. Confirme para fechar sem receber nada.</div>
+  {:else}
   <div class="options">
     {#each options as opt, i (opt)}
       <button class:selected={payment === opt} onclick={() => (payment = opt)}>
@@ -188,6 +246,34 @@
       </label>
       <div class="money-box"><span>Troco</span><strong>{fmt(change)}</strong></div>
     </div>
+  {:else if payment === 'misto'}
+    <div class="parts">
+      {#each parts as part, i (i)}
+        <div class="part">
+          <select bind:value={part.type} aria-label="Forma {i + 1}">
+            {#each SPLITS as t (t)}<option value={t}>{PAYMENT_LABELS[t]}</option>{/each}
+          </select>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            bind:value={part.amount}
+            inputmode="decimal"
+            placeholder={i === parts.length - 1 ? `${fmt(lastAuto)} (o que falta)` : 'R$ 0,00'}
+            autofocus={i === 0}
+            data-submit
+          />
+          {#if parts.length > 2}
+            <button class="ghost" onclick={() => parts.splice(i, 1)} aria-label="Tirar esta forma">×</button>
+          {/if}
+        </div>
+      {/each}
+      {#if parts.length < 4}<button class="ghost add" onclick={addPart}>+ outra forma</button>{/if}
+    </div>
+    {#if cashPart > 0}
+      <div class="grid2">
+        <label>Dinheiro recebido <input bind:value={splitTendered} inputmode="decimal" placeholder={fmt(cashPart)} data-submit /></label>
+        <div class="money-box"><span>Troco</span><strong>{fmt(splitChange)}</strong></div>
+      </div>
+    {/if}
   {:else if payment === 'pix_online'}
     <p class="muted">Ao confirmar, o QR Code aparece para o cliente pagar. A venda só fecha quando o Pix cair.</p>
   {:else if payment === 'crediario'}
@@ -252,6 +338,7 @@
   {:else}
     <p class="muted">Confirme depois que o pagamento passar na maquininha ou cair na conta.</p>
   {/if}
+  {/if}
 
   {#if problem}<div class="alert warn">{problem}</div>{/if}
   {#if error}<div class="alert">{error}</div>{/if}
@@ -259,7 +346,7 @@
   {#snippet footer()}
     <button onclick={onclose}>Voltar</button>
     <button class="primary big" onclick={confirm} disabled={saving || !!problem}>
-      {saving ? 'Gravando…' : payment === 'pix_online' ? 'Gerar Pix' : 'Confirmar venda'}<kbd>F9</kbd>
+      {saving ? 'Gravando…' : payment === 'pix_online' && !paidByCredit ? 'Gerar Pix' : 'Confirmar venda'}<kbd>F9</kbd>
     </button>
   {/snippet}
 </Modal>
@@ -293,6 +380,45 @@
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1;
+  }
+  .credit {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--ok-bg);
+    color: var(--ok);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .credit.off {
+    background: #f8fafc;
+    color: var(--muted);
+  }
+  .credit input {
+    width: 18px;
+    height: 18px;
+  }
+  .parts {
+    display: grid;
+    gap: 8px;
+  }
+  .part {
+    display: grid;
+    grid-template-columns: 150px 1fr auto;
+    gap: 8px;
+  }
+  .part .ghost {
+    width: 40px;
+    padding: 0;
+    font-size: 18px;
+  }
+  .parts .add {
+    justify-self: start;
+    height: 34px;
+    color: var(--brand);
   }
   .options {
     display: grid;
