@@ -384,6 +384,10 @@
     display: grid;
     gap: 14px;
   }
+  /* A dica longa do CPF quebra a linha: os campos alinham pela base. */
+  .form .grid2 {
+    align-items: end;
+  }
   .opt {
     font-weight: 500;
     color: var(--faint);

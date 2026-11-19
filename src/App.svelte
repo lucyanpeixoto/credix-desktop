@@ -197,13 +197,24 @@
     background: #fff;
     border-bottom: 1px solid var(--line);
   }
+  /* Janela estreita (Windows com escala 125%/150%): o nome da loja encolhe
+     com reticências em vez de quebrar a barra em várias linhas. */
   .brand {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex: 0 1 auto;
   }
   .brand div {
     display: grid;
+    min-width: 0;
+  }
+  .brand strong,
+  .brand span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .brand strong {
     font-size: 14px;
@@ -216,6 +227,7 @@
     color: var(--muted);
   }
   nav {
+    flex: none;
     display: flex;
     gap: 4px;
     padding: 4px;
@@ -240,6 +252,8 @@
     color: var(--brand);
   }
   .pill {
+    flex: none;
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -254,7 +268,14 @@
     background: #d1fae5;
     color: var(--ok);
   }
+  @media (max-width: 1180px) {
+    .drawer .sep {
+      display: none;
+    }
+  }
   .drawer {
+    flex: none;
+    white-space: nowrap;
     height: 32px;
     padding: 0 12px;
     border-radius: 999px;
