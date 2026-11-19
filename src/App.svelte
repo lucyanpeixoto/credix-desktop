@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { Sale } from './lib/api'
+  import type { Customer, Sale } from './lib/api'
   import AfterHoursModal from './lib/components/AfterHoursModal.svelte'
   import CashModal from './lib/components/CashModal.svelte'
   import ConnectionBadge from './lib/components/ConnectionBadge.svelte'
@@ -31,6 +31,12 @@
 
   function receiveFrom(s: Sale) {
     receiveSale = s
+    tab = 'receive'
+  }
+  /** "Receber agora" na venda: abre o Receber já no cliente (o carrinho fica como está). */
+  let receiveCustomer = $state<Customer | null>(null)
+  function receiveFor(c: Customer) {
+    receiveCustomer = c
     tab = 'receive'
   }
   onMount(() => {
@@ -150,13 +156,15 @@
       {/if}
       {#key session.seller.id}
         <div class="tab" class:hidden={tab !== 'sale' || session.cashBlocked}>
-          <SaleScreen active={tab === 'sale' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked} />
+          <SaleScreen active={tab === 'sale' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked} onreceive={receiveFor} />
         </div>
         <div class="tab" class:hidden={tab !== 'receive' || session.cashBlocked}>
           <ReceiveScreen
             active={tab === 'receive' && !settingsOpen && !cashOpen && !cashClosing && !session.cashBlocked}
             sale={receiveSale}
             onsaleloaded={() => (receiveSale = null)}
+            pick={receiveCustomer}
+            onpicked={() => (receiveCustomer = null)}
           />
         </div>
         <div class="tab" class:hidden={tab !== 'sales'}>

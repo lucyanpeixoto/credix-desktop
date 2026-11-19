@@ -15,7 +15,19 @@
     active,
     sale = null,
     onsaleloaded,
-  }: { active: boolean; sale?: Sale | null; onsaleloaded?: () => void } = $props()
+    pick = null,
+    onpicked,
+  }: { active: boolean; sale?: Sale | null; onsaleloaded?: () => void; pick?: Customer | null; onpicked?: () => void } = $props()
+
+  // Veio de "Receber agora" na venda: abre direto no cliente.
+  $effect(() => {
+    const c = pick
+    if (!c) return
+    untrack(() => {
+      onpicked?.()
+      loadCustomer(c)
+    })
+  })
 
   // Veio de "Receber" na aba Vendas: abre o cliente com as parcelas dessa venda.
   $effect(() => {
@@ -35,9 +47,12 @@
   let loading = $state(false)
   let error = $state('')
 
-  // O que receber: parcelas marcadas, ou um valor livre abatido das mais antigas.
+  // O que receber: um valor, que abate das parcelas marcadas primeiro (a sobra
+  // vai para as mais antigas) ou, sem nada marcado, direto das mais antigas.
   let selected = $state<string[]>([])
   let amountInput = $state('')
+  /** O caixa digitou o valor: marcar parcelas passa a só dizer onde ele abate. */
+  let typed = $state(false)
   let waive = $state(false)
   let discountInput = $state('')
   let notes = $state('')
@@ -59,7 +74,7 @@
   let seq = 0
 
   // Sem valor e sem parcela marcada, a prévia do servidor é "pagar tudo": aqui vale como nada a abater.
-  const nothing = $derived(!selected.length && parseMoney(amountInput) <= 0)
+  const nothing = $derived(parseMoney(amountInput) <= 0)
   const amount = $derived(nothing ? 0 : (data?.preview.amount ?? 0))
   const discount = $derived(parseMoney(discountInput))
   const toPay = $derived(round2(Math.max(0, amount - discount)))
@@ -77,7 +92,7 @@
     if (!data) return ''
     if (!data.installments.length) return 'Este cliente não tem parcelas em aberto.'
     if (amount <= 0) return 'Informe o valor ou marque as parcelas.'
-    if (!selected.length && typedAmount > 0 && typedAmount > dueNow + 0.004)
+    if (typedAmount > dueNow + 0.004)
       return `O valor passa do que o cliente deve (${fmt(dueNow)}).`
     if (discount > 0 && discount >= amount) return 'O desconto precisa ser menor que o valor.'
     if (!usePixOnline && Math.abs(methodsTotal - toPay) > 0.004)
@@ -88,7 +103,7 @@
 
   function query() {
     return {
-      amount: selected.length ? undefined : typedAmount || undefined,
+      amount: typedAmount || undefined,
       installment_ids: selected.length ? selected : undefined,
       waive_surcharge: waive || undefined,
     }
@@ -100,7 +115,7 @@
     await loadCustomer(s.customer as Customer)
     if (!data) return
     selected = data.installments.filter((i) => String(i.sale_code) === String(s.code)).map((i) => i.id)
-    if (selected.length) refreshPreview()
+    if (selected.length) syncAmount()
   }
 
   async function loadCustomer(c: Customer) {
@@ -116,7 +131,7 @@
       if (mine !== seq) return
       data = res
       // Abre com as vencidas no valor; em dia, nada marcado.
-      const overdue = round2(res.installments.filter((i) => i.days_late > 0).reduce((s, i) => s + i.principal + i.surcharge, 0))
+      const overdue = round2(res.installments.filter((i) => i.days_late > 0).reduce((s, i) => s + dueOf(i), 0))
       amountInput = overdue > 0 ? toInput(overdue) : ''
       if (overdue > 0 && overdue + 0.004 < res.total_due) refreshPreview()
     } catch (e) {
@@ -143,21 +158,47 @@
     }, 250)
   }
 
+  /** O que a parcela deve hoje (sem os juros, se foram dispensados). */
+  const dueOf = (i: OpenInstallment) => round2(i.principal + (waive ? 0 : i.surcharge))
+
+  /** Valor digitado fica; senão o valor acompanha as parcelas marcadas. */
+  function syncAmount() {
+    if (!typed) {
+      const sum = round2((data?.installments ?? []).filter((i) => selected.includes(i.id)).reduce((s, i) => s + dueOf(i), 0))
+      amountInput = sum > 0 ? toInput(sum) : ''
+    }
+    refreshPreview()
+  }
+
+  function onAmountInput() {
+    typed = amountInput.trim() !== ''
+    refreshPreview()
+  }
+
+  /** Atalhos: só as vencidas, a próxima parcela ou tudo. Abate das mais antigas. */
+  function quick(value: number) {
+    selected = []
+    typed = false
+    amountInput = toInput(value)
+    refreshPreview()
+  }
+
   /** Marca ou desmarca todas as parcelas da venda. */
   function toggleSale(ids: string[]) {
     const all = ids.every((id) => selected.includes(id))
     selected = all ? selected.filter((x) => !ids.includes(x)) : [...new Set([...selected, ...ids])]
-    refreshPreview()
+    syncAmount()
   }
 
   function toggle(id: string) {
     selected = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]
-    refreshPreview()
+    syncAmount()
   }
 
   function resetForm() {
     selected = []
     amountInput = ''
+    typed = false
     waive = false
     discountInput = ''
     notes = ''
@@ -202,7 +243,13 @@
       }))
       .sort((a, b) => a.list[0].due_date.localeCompare(b.list[0].due_date) || Number(a.code) - Number(b.code))
   })
-  const overdueTotal = $derived(round2((data?.installments ?? []).filter((i) => i.days_late > 0).reduce((s, i) => s + i.principal + i.surcharge, 0)))
+  const overdueTotal = $derived(round2((data?.installments ?? []).filter((i) => i.days_late > 0).reduce((s, i) => s + dueOf(i), 0)))
+  const nextDue = $derived(data?.installments.length ? dueOf(data.installments[0]) : 0)
+  /** Com destino escolhido, alguma vencida fica sem quitar: o caixa avisa o cliente. */
+  const leftOverdue = $derived(
+    !nothing && selected.length > 0
+      && (data?.installments ?? []).some((i) => i.days_late > 0 && !data?.preview.rows.find((r) => r.installment_id === i.id)?.settled),
+  )
 
   async function confirm() {
     if (!data || !customer || saving || problem || pix) return
@@ -360,7 +407,9 @@
           </table>
         </div>
         <footer class="row muted small pad">
-          {selected.length ? `${selected.length} parcela(s) marcada(s)` : 'Sem parcelas marcadas: o valor abate das mais antigas.'}
+          {selected.length
+            ? `${selected.length} marcada(s): o valor abate delas primeiro e a sobra vai para as mais antigas.`
+            : 'Sem parcelas marcadas: o valor abate das mais antigas.'}
           <span class="spacer"></span>
           Total em aberto: <strong>{fmt(data.total_due)}</strong>
         </footer>
@@ -378,14 +427,25 @@
         Valor a receber
         <input
           bind:value={amountInput}
-          oninput={refreshPreview}
+          oninput={onAmountInput}
           inputmode="decimal"
-          disabled={!data || selected.length > 0}
-          placeholder={selected.length ? 'Pelas parcelas marcadas' : 'R$ 0,00'}
+          disabled={!data}
+          placeholder="R$ 0,00"
         />
       </label>
+      {#if data?.installments.length}
+        <div class="quick">
+          {#if overdueTotal > 0 && overdueTotal + 0.004 < data.total_due}
+            <button onclick={() => quick(overdueTotal)}>Só as vencidas <b>{fmt(overdueTotal)}</b></button>
+          {/if}
+          {#if nextDue + 0.004 < data.total_due && Math.abs(nextDue - overdueTotal) > 0.004}
+            <button onclick={() => quick(nextDue)}>Próxima parcela <b>{fmt(nextDue)}</b></button>
+          {/if}
+          <button onclick={() => quick(data!.total_due)}>Quitar tudo <b>{fmt(data.total_due)}</b></button>
+        </div>
+      {/if}
       {#if data?.permissions.waive_surcharge && (data.preview.surcharge > 0 || data.preview.waived > 0 || waive)}
-        <label class="check"><input type="checkbox" bind:checked={waive} onchange={refreshPreview} /> Dispensar juros e multa</label>
+        <label class="check"><input type="checkbox" bind:checked={waive} onchange={syncAmount} /> Dispensar juros e multa</label>
       {/if}
       {#if data?.permissions.discount}
         <label>Desconto <input bind:value={discountInput} inputmode="decimal" placeholder="R$ 0,00" disabled={!data} /></label>
@@ -444,6 +504,7 @@
       <label>Observação <input bind:value={notes} maxlength="500" disabled={!data} /></label>
     </div>
 
+    {#if leftOverdue && !problem}<div class="alert warn">Fica parcela vencida sem quitar neste recebimento: ela continua em atraso.</div>{/if}
     {#if problem && data}<div class="alert warn">{problem}</div>{/if}
     {#if error}<div class="alert">{error}</div>{/if}
 
@@ -638,6 +699,23 @@
     color: var(--ink-2);
     font-size: 13px;
     font-weight: 600;
+  }
+  .quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .quick button {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 6px;
+    color: var(--muted);
+  }
+  .quick b {
+    color: var(--ink);
   }
   .sum {
     display: grid;

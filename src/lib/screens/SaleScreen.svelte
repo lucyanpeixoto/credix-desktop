@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { ApiError, type Category, type Customer, type Product, type ProductVariant, type Sale } from '../api'
+  import { ApiError, type Category, type CreditLimit, type Customer, type Product, type ProductVariant, type Sale } from '../api'
   import { cashDueOf, fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
   import Checkout from '../components/Checkout.svelte'
   import CustomerPicker from '../components/CustomerPicker.svelte'
@@ -14,11 +14,29 @@
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
-  let { active }: { active: boolean } = $props()
+  let { active, onreceive }: { active: boolean; onreceive?: (c: Customer) => void } = $props()
 
   // Venda em andamento (o vendedor é quem entrou com o PIN)
   let items = $state<CartItem[]>([])
   let customer = $state<Customer | null>(null)
+
+  // Situação do cliente escolhido: quanto deve, quanto está vencido e o limite do crediário.
+  let debt = $state<{ total: number; overdue: number; credit: CreditLimit | null } | null>(null)
+  let debtSeq = 0
+  $effect(() => {
+    const id = customer?.id
+    const mine = ++debtSeq
+    debt = null
+    if (!id) return
+    session.api
+      .receivable(id)
+      .then((r) => {
+        if (mine !== debtSeq) return
+        const overdue = round2(r.installments.filter((i) => i.days_late > 0).reduce((s, i) => s + i.principal + i.surcharge, 0))
+        debt = { total: r.total_due, overdue, credit: r.credit ?? null }
+      })
+      .catch(() => {})
+  })
   let discount = $state(0)
 
   // Catálogo
@@ -597,7 +615,15 @@
           </div>
           <button class="ghost x" onclick={() => (customer = null)} aria-label="Remover cliente"><Icon name="x" size={16} /></button>
         </div>
-        {#if customer.overdue_count}
+        {#if debt && debt.total > 0}
+          <div class="alert row debt" class:warn={debt.overdue > 0}>
+            <span>
+              Deve <b>{fmt(debt.total)}</b>{#if debt.overdue > 0}{' · '}<b>{fmt(debt.overdue)} vencido</b>{/if}
+            </span>
+            <span class="spacer"></span>
+            {#if onreceive}<button onclick={() => customer && onreceive(customer)}>Receber agora</button>{/if}
+          </div>
+        {:else if !debt && customer.overdue_count}
           <div class="alert warn row"><Icon name="alert" size={16} /> {customer.overdue_count} parcela(s) em atraso</div>
         {/if}
         {#if (customer.credit_balance ?? 0) > 0}
@@ -828,6 +854,7 @@
     {items}
     {discount}
     {customer}
+    limit={debt?.credit ?? null}
     oncustomer={(c) => (customer = c)}
     ondone={finished}
     onclose={() => (modal = '')}
@@ -1181,6 +1208,17 @@
     background: #fff;
     border-left: 1px solid var(--line);
     min-height: 0;
+  }
+  .debt {
+    font-size: 13px;
+    background: var(--soft);
+    color: var(--ink);
+  }
+  .debt button {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 12px;
+    flex: none;
   }
   .customer {
     padding: 16px;

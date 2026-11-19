@@ -292,11 +292,19 @@ export interface OpenInstallment {
   surcharge: number
 }
 
+export interface CreditLimit {
+  limit: number | null
+  used: number
+  available: number | null
+}
+
 export interface Receivable {
   customer: { id: string; name: string; phone: string | null }
   permissions: { waive_surcharge: boolean; discount: boolean; adjustment: boolean; reverse: boolean }
   pix_online: boolean
   total_due: number
+  /** Limite do crediário (limit null = sem limite); used é o principal em aberto. */
+  credit?: CreditLimit
   installments: OpenInstallment[]
   preview: {
     amount: number
