@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Customer, PixCharge, Sale } from '../api'
+  import type { CreditLimit, Customer, PixCharge, Sale } from '../api'
   import { Attempt } from '../attempt'
   import { splitInstallments, type CartItem } from '../cart'
   import { dueDateIso, fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, todayIso } from '../money'
@@ -12,10 +12,13 @@
     items,
     discount,
     customer,
+    limit = null,
     oncustomer,
     ondone,
     onclose,
   }: {
+    /** Limite do crediário do cliente; passar dele só avisa, não bloqueia. */
+    limit?: CreditLimit | null
     items: CartItem[]
     discount: number
     /** Cliente da venda; com saldo de vale-troca, ele abate o total. */
@@ -109,6 +112,8 @@
     return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
   }
 
+  const overLimit = $derived(payment === 'crediario' && limit?.limit != null && limit.used + financed > limit.limit + 0.004)
+
   const problem = $derived.by(() => {
     if (total <= 0) return 'O total precisa ser maior que zero.'
     if (paidByCredit) return ''
@@ -200,10 +205,14 @@
       confirm()
       return
     }
-    // Teclas 1–7 escolhem a forma (fora dos campos de texto).
-    if (!typing && /^[1-7]$/.test(e.key)) {
-      const opt = options[Number(e.key) - 1]
-      if (opt) payment = opt
+    // Teclas 1–7 escolhem a forma; com o cursor num campo (onde o número é valor), Alt+1–7.
+    const digit = e.altKey ? e.code.match(/^(?:Digit|Numpad)([1-7])$/)?.[1] : !typing && /^[1-7]$/.test(e.key) ? e.key : undefined
+    if (digit) {
+      const opt = options[Number(digit) - 1]
+      if (opt) {
+        e.preventDefault()
+        payment = opt
+      }
     }
   }
 </script>
@@ -229,7 +238,7 @@
   {#if paidByCredit}
     <div class="alert ok">O vale-troca paga a venda inteira. Confirme para fechar sem receber nada.</div>
   {:else}
-  <div class="options">
+  <div class="options" title="Com o cursor num campo de valor, use Alt + o número">
     {#each options as opt, i (opt)}
       <button class:selected={payment === opt} onclick={() => (payment = opt)}>
         <span>{PAYMENT_LABELS[opt]}</span><kbd>{i + 1}</kbd>
@@ -340,6 +349,11 @@
   {/if}
   {/if}
 
+  {#if overLimit && limit}
+    <div class="alert warn">
+      Passa do limite de crédito de {fmt(limit.limit ?? 0)}: o cliente já tem {fmt(limit.used)} em aberto e ficaria com {fmt(round2(limit.used + financed))}.
+    </div>
+  {/if}
   {#if problem}<div class="alert warn">{problem}</div>{/if}
   {#if error}<div class="alert">{error}</div>{/if}
 

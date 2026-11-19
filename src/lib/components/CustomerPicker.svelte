@@ -104,6 +104,11 @@
     timer = setTimeout(load, 250)
   }
 
+  /** O leitor manda o Enter logo depois do texto: busca antes de escolher. */
+  async function flush() {
+    if (timer !== undefined) await load()
+  }
+
   function setMode(m: 'cliente' | 'venda') {
     mode = m
     search = ''
@@ -133,8 +138,14 @@
     }
   }
 
+  /** Documento do carnê lido ou digitado na busca de cliente ("1165/002-005" ou "#1165"). */
+  const carneOf = (term: string) => (onsale && /^#\s*\d|^\d{1,9}\s*\//.test(term) ? saleCodeOf(term) : null)
+
   async function load() {
-    if (mode === 'venda') return loadSale()
+    clearTimeout(timer)
+    timer = undefined
+    if (mode === 'venda' || carneOf(search.trim())) return loadSale()
+    sale = null
     const term = search.trim()
     if (term.length < 2) {
       results = []
@@ -156,12 +167,13 @@
     }
   }
 
-  function keydown(e: KeyboardEvent) {
-    if (mode === 'venda') {
-      if (e.key === 'Enter' && sale && onsale) {
-        e.preventDefault()
-        onsale(sale)
-      }
+  async function keydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      await flush()
+    }
+    if (mode === 'venda' || carneOf(search.trim())) {
+      if (e.key === 'Enter' && sale && onsale) onsale(sale)
       return
     }
     if (e.key === 'ArrowDown') {
@@ -171,7 +183,6 @@
       e.preventDefault()
       active = Math.max(active - 1, 0)
     } else if (e.key === 'Enter' && results[active]) {
-      e.preventDefault()
       onpick(results[active])
     }
   }
@@ -289,7 +300,7 @@
       <input
         autofocus
         bind:this={searchEl}
-        placeholder={mode === 'venda' ? 'Número da venda, como está no carnê' : 'Nome, CPF, telefone ou código do cliente'}
+        placeholder={mode === 'venda' ? 'Número da venda, como está no carnê' : onsale ? 'Nome, CPF, telefone, código ou o carnê (1165/002-005)' : 'Nome, CPF, telefone ou código do cliente'}
         bind:value={search}
         oninput={onInput}
         onkeydown={keydown}
@@ -297,7 +308,7 @@
       {#if mode === 'cliente'}<button class="newbtn" onclick={startCreate}><Icon name="plus" size={16} /> Novo</button>{/if}
     </div>
     {#if error}<div class="alert">{error}</div>{/if}
-    {#if mode === 'venda'}
+    {#if mode === 'venda' || carneOf(search.trim())}
       <div class="list">
         {#if sale && sale.customer}
           <button class="item active" onclick={() => sale && onsale?.(sale)}>

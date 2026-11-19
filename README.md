@@ -9,12 +9,15 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 **Venda** (`F1`)
 - Leitor de código de barras (código exato) e busca por nome/SKU; `3*código` lança 3 unidades
 - Grade de produtos por categoria, carrinho com quantidade, item avulso (`F6`), desconto em R$ ou % (`F7`)
+- Com o cliente escolhido, mostra quanto ele deve e o vencido, com **Receber agora** (o carrinho fica guardado); no crediário, avisa se a venda passa do **limite de crédito** definido no web
 - Cliente (`F4`), com **cadastro completo** se ainda não existir: nome, CPF, telefone, e-mail, observações e endereço (o CEP preenche rua, bairro, cidade e UF pelo ViaCEP)
 - Pagamento (`F9`): dinheiro com troco, Pix, débito, crédito, **Pix com QR** (Mercado Pago, se a loja usa) e **crediário** (parcelas, intervalo, 1º vencimento, entrada)
 
 **Receber** (`F2`)
 - Busca o cliente e mostra as parcelas em aberto com juros/multa do dia
-- Recebe um valor (abate das mais antigas) ou as parcelas marcadas, com prévia do abatimento
+- Recebe um valor: abate das parcelas marcadas primeiro (a sobra vai para as mais antigas) ou, sem nada marcado, direto das mais antigas, com prévia parcela a parcela
+- Atalhos de valor: só as vencidas, próxima parcela e quitar tudo
+- Aceita o carnê lido ou digitado na busca (`1165/002-005`), sem trocar de aba
 - Dispensar juros e desconto (conforme a permissão do usuário no Credix)
 - Divide em várias formas, calcula troco, Pix com QR; copia a mensagem do WhatsApp
 
@@ -67,7 +70,7 @@ O PDV usa a API `/api/pdv` do Credix (token do terminal + vendedor e PIN em cada
 | `F11` | Trocar vendedor (bloqueia o caixa) |
 | `Ctrl+Del` | Cancelar a venda em andamento |
 | `F12` | Configurações |
-| `1`–`6` | Forma de pagamento (na finalização) |
+| `1`–`6` | Forma de pagamento (na finalização); com o cursor num campo de valor, `Alt`+número |
 | `Enter` / `P` | Nova venda / reimprimir (na tela de concluído) |
 
 ## Desenvolvimento
