@@ -35,6 +35,9 @@
 
 * {
   box-sizing: border-box;
+  /* A barra padrão do Windows é larga e cinza. */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 html,
