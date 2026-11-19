@@ -1,6 +1,7 @@
 // Impressão com as configurações do terminal; nunca derruba a venda se falhar.
 import type { CashMovement, CashSession, Receipt, Sale } from './api'
 import { carneBytes, carneTestBytes, type CarneAdjust } from './carne'
+import { Ticket } from './escpos'
 import {
   cashCloseTicket,
   movementTicket,
@@ -63,6 +64,17 @@ export async function printReceipt(r: Receipt, customer: string, drawer = false)
     return { ok: true }
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Sem impressão automática: entrou dinheiro, abre só a gaveta (sem cupom). */
+export async function kickDrawer(): Promise<void> {
+  const s = session.settings
+  if (!s.openDrawer || !printerReady(s)) return
+  try {
+    await sendToPrinter(s, new Ticket(s.paperColumns).drawer().build())
+  } catch {
+    // A gaveta não abrir não pode atrapalhar a venda.
   }
 }
 
