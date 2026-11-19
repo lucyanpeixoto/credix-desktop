@@ -10,7 +10,7 @@
   import PriceCheck from '../components/PriceCheck.svelte'
   import { loadHeld, MAX_HELD, saveHeld, type HeldSale } from '../held'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
-  import { canPrintReceipt, printCarne, printSale, type PrintResult } from '../print'
+  import { canPrintReceipt, kickDrawer, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -378,6 +378,8 @@
       (sale.installments ?? []).some((i) => i.status === 'paid')
     if (session.settings.autoPrint && canPrintReceipt(session.settings)) {
       done.print = await printSale(sale, { cashTendered, drawer: cashIn })
+    } else if (cashIn) {
+      kickDrawer()
     }
   }
 

@@ -12,7 +12,7 @@ export interface Settings {
   printerName: string
   /** Colunas da bobina: 48 para 80 mm, 32 para 58 mm. */
   paperColumns: number
-  /** Imprime o cupom sozinho ao fechar a venda ou o recebimento. */
+  /** Imprime o cupom sozinho ao fechar a venda ou o recebimento (desligado por padrão). */
   autoPrint: boolean
   /** Abre a gaveta quando entra dinheiro. */
   openDrawer: boolean
@@ -25,6 +25,8 @@ export interface Settings {
   carneBold: boolean
   /** Produtos na tela de venda: em cards ou em lista. */
   catalogView: 'cards' | 'list'
+  /** Migrações já aplicadas às configurações gravadas. */
+  rev: number
 }
 
 const KEY = 'credix-desktop.settings'
@@ -36,19 +38,29 @@ export const defaults: Settings = {
   printerPort: 9100,
   printerName: '',
   paperColumns: 48,
-  autoPrint: true,
+  autoPrint: false,
   openDrawer: true,
   carnePrinter: '',
   carneDx: 0,
   carneDy: 0,
   carneBold: false,
   catalogView: 'cards',
+  rev: 1,
 }
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? { ...defaults, ...JSON.parse(raw) } : { ...defaults }
+    if (!raw) return { ...defaults }
+    const s: Settings = { ...defaults, rev: 0, ...JSON.parse(raw) }
+    // 0.2.23: a impressão automática passou a vir desligada; desliga uma vez
+    // nos caixas que já estavam com ela ligada (quem quiser religa no F12).
+    if (s.rev < 1) {
+      s.autoPrint = false
+      s.rev = 1
+      saveSettings(s)
+    }
+    return s
   } catch {
     return { ...defaults }
   }

@@ -28,7 +28,7 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 
 **Impressão** (`F12` → Configurações)
 - Cupom ESC/POS em impressora térmica **de rede** (IP:9100) ou **instalada no computador** (USB, modo RAW no Windows / CUPS no macOS)
-- Bobina de 80 mm ou 58 mm, impressão automática e abertura de gaveta quando entra dinheiro
+- Bobina de 80 mm ou 58 mm e abertura de gaveta quando entra dinheiro. O cupom sai pelo botão Imprimir (`P`) na tela de concluído; a impressão automática fica desligada e pode ser ligada no `F12`
 
 **Carnê na matricial (LX-300)** (`F12` → Configurações)
 - Formulário contínuo pré-impresso de 215 × 76,5 mm, duas vias por folha, com o mesmo layout do "Carnê LX-300 calibrado" do web
