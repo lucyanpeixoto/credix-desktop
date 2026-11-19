@@ -136,6 +136,26 @@ export interface Customer {
   credit_balance?: number
 }
 
+export interface CustomerAddress {
+  zipcode: string | null
+  street: string | null
+  number: string | null
+  complement: string | null
+  neighborhood: string | null
+  city: string | null
+  state: string | null
+}
+
+/** Mesmos campos do cadastro de cliente do Credix web. */
+export interface NewCustomer {
+  name: string
+  cpf?: string | null
+  phone?: string | null
+  email?: string | null
+  information?: string | null
+  address?: CustomerAddress | null
+}
+
 export interface Installment {
   id: string
   installment_number: number
@@ -461,7 +481,7 @@ export class Api {
   customers(search: string) {
     return this.request<{ data: Customer[] }>('GET', 'customers', { query: { search } })
   }
-  createCustomer(body: { name: string; cpf?: string | null; phone?: string | null }, key?: string) {
+  createCustomer(body: NewCustomer, key?: string) {
     return this.request<Customer>('POST', 'customers', { body, key })
   }
 
