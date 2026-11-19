@@ -176,6 +176,8 @@ export interface Sale {
   status: string
   /** Comprovante em meia folha A4 (link assinado). */
   half_sheet_url?: string
+  /** Carnê em folha A4 (link assinado; só no crediário). */
+  carne_a4_url?: string | null
   payment_type: string
   /** Pagamento misto: cada forma com o valor. */
   payment_methods?: { payment_type: string; label: string; amount: number }[]

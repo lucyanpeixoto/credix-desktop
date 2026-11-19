@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { printCarneTest } from '../print'
+  import { halfSheet, printCarneTest } from '../print'
   import { inTauri, listPrinters, sendToPrinter, testTicket } from '../printer'
   import { session } from '../session.svelte'
   import type { Settings } from '../settings'
@@ -9,6 +9,7 @@
   let { onclose }: { onclose: () => void } = $props()
 
   let form = $state<Settings>({ ...session.settings })
+  const storeFormat = session.company?.receipt_format ?? 'termica'
   let printers = $state<string[]>([])
   let status = $state<{ ok: boolean; text: string } | null>(null)
   let testing = $state(false)
@@ -44,7 +45,7 @@
     status = null
     try {
       await sendToPrinter(form, testTicket(form))
-      status = { ok: true, text: 'Enviado. Confira se saiu o cupom de teste.' }
+      status = { ok: true, text: 'Enviado. Confira se saiu o comprovante de teste.' }
     } catch (e) {
       status = { ok: false, text: String((e as Error)?.message ?? e) }
     } finally {
@@ -60,10 +61,24 @@
 </script>
 
 <Modal title="Configurações do terminal" {onclose} width="560px">
-  <h3>Impressora térmica</h3>
+  <h3>Comprovante</h3>
   {#if !inTauri()}
     <div class="alert warn">Você está no navegador: a impressão só funciona no app instalado.</div>
   {/if}
+  <label>
+    Tipo do comprovante (venda e recebimento)
+    <select bind:value={form.receiptFormat}>
+      <option value="loja">Padrão da loja ({storeFormat === 'meia_a4' ? 'meia folha A4' : 'térmica'})</option>
+      <option value="termica">Térmica (bobina)</option>
+      <option value="meia_a4">Meia folha A4 (abre no navegador)</option>
+    </select>
+  </label>
+  {#if halfSheet(form)}
+    <p class="muted small">O comprovante abre no navegador; escolha a impressora A4 na janela de impressão. A térmica abaixo é opcional (gaveta).</p>
+  {/if}
+  <label class="check"><input type="checkbox" bind:checked={form.autoPrint} /> Imprimir o comprovante automaticamente</label>
+
+  <h3>Impressora térmica{#if halfSheet(form)} <small class="muted">(opcional)</small>{/if}</h3>
   <label>
     Conexão
     <select bind:value={form.printerMode}>
@@ -91,7 +106,7 @@
       {/if}
     </label>
     <p class="muted small">
-      No Windows, instale a impressora com o driver do fabricante (ou "Generic / Text Only"). O cupom vai em modo RAW.
+      No Windows, instale a impressora com o driver do fabricante (ou "Generic / Text Only"). O comprovante vai em modo RAW.
     </p>
   {/if}
 
@@ -107,21 +122,31 @@
       </label>
       <div class="end"><button onclick={test} disabled={testing}>{testing ? 'Enviando…' : 'Imprimir teste'}</button></div>
     </div>
-    <label class="check"><input type="checkbox" bind:checked={form.autoPrint} /> Imprimir o cupom automaticamente</label>
     <label class="check"><input type="checkbox" bind:checked={form.openDrawer} /> Abrir a gaveta quando entrar dinheiro</label>
     {#if status}<div class="alert" class:ok={status.ok}>{status.text}</div>{/if}
   {/if}
 
-  <h3>Carnê (matricial LX-300)</h3>
+  <h3>Carnê</h3>
+  <label>
+    Tipo do carnê
+    <select bind:value={form.carneFormat}>
+      <option value="a4">Folha A4 (abre no navegador)</option>
+      <option value="lx300">Matricial LX-300 (formulário contínuo)</option>
+      <option value="none">Sem carnê neste caixa</option>
+    </select>
+  </label>
+  {#if form.carneFormat === 'a4'}
+    <p class="muted small">Duas vias (canhoto da loja e via do cliente), 4 parcelas por folha. Abre no navegador já na janela de impressão.</p>
+  {:else if form.carneFormat === 'lx300'}
   <label>
     Impressora do carnê
     {#if printers.length}
       <select bind:value={form.carnePrinter}>
-        <option value="">Sem carnê neste caixa</option>
+        <option value="">Escolha…</option>
         {#each printers as p (p)}<option value={p}>{p}</option>{/each}
       </select>
     {:else}
-      <input bind:value={form.carnePrinter} placeholder="Nome exato da impressora (vazio = sem carnê)" />
+      <input bind:value={form.carnePrinter} placeholder="Nome exato da impressora" />
     {/if}
   </label>
   {#if form.carnePrinter}
@@ -148,6 +173,7 @@
       nos campos e salve. O carnê vai direto para a impressora, sem janela de impressão.
     </p>
     {#if carneStatus}<div class="alert" class:ok={carneStatus.ok}>{carneStatus.text}</div>{/if}
+  {/if}
   {/if}
 
   <h3>Este caixa</h3>
