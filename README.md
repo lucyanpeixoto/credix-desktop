@@ -27,11 +27,11 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 - Selo no topo (e na tela de PIN): **Online** ou **Sem conexão**, conferindo o servidor a cada 20 s. Sem conexão, vendas e recebimentos ficam pausados (ainda não há modo offline)
 
 **Impressão** (`F12` → Configurações)
-- Cupom ESC/POS em impressora térmica **de rede** (IP:9100) ou **instalada no computador** (USB, modo RAW no Windows / CUPS no macOS)
-- Bobina de 80 mm ou 58 mm e abertura de gaveta quando entra dinheiro. O cupom sai pelo botão Imprimir (`P`) na tela de concluído; a impressão automática fica desligada e pode ser ligada no `F12`
+- Comprovante ESC/POS em impressora térmica **de rede** (IP:9100) ou **instalada no computador** (USB, modo RAW no Windows / CUPS no macOS)
+- Bobina de 80 mm ou 58 mm e abertura de gaveta quando entra dinheiro. O comprovante sai pelo botão Imprimir (`P`) na tela de concluído; a impressão automática fica desligada e pode ser ligada no `F12`
 
-**Tipo do cupom e do carnê** (`F12` → Configurações)
-- Cupom: padrão da loja (definido no web), térmica ou meia folha A4 (abre no navegador)
+**Tipo do comprovante e do carnê** (`F12` → Configurações)
+- Comprovante: padrão da loja (definido no web), térmica ou meia folha A4 (abre no navegador)
 - Carnê: folha A4 comum (2 vias, 4 parcelas por folha, abre no navegador já na janela de impressão), matricial LX-300 ou sem carnê
 
 **Carnê na matricial (LX-300)** (`F12` → Configurações, tipo do carnê LX-300)

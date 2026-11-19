@@ -464,7 +464,7 @@
           <div class="block"><span class="lbl">Observação</span><p>{d.notes}</p></div>
         {/if}
 
-        {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? (print.message ?? 'Cupom impresso.') : `Não imprimiu: ${print.message}`}</div>{/if}
+        {#if print}<div class="alert" class:ok={print.ok}>{print.ok ? (print.message ?? 'Comprovante impresso.') : `Não imprimiu: ${print.message}`}</div>{/if}
         {#if cancelled}<div class="alert warn">{cancelled}</div>{/if}
       </div>
 
@@ -481,7 +481,7 @@
           </button>
         {/if}
         <button class="primary" onclick={reprint} disabled={!canPrintReceipt(session.settings) || d.status === 'cancelled'}>
-          <Icon name="printer" size={16} /> Imprimir cupom <kbd>P</kbd>
+          <Icon name="printer" size={16} /> Imprimir comprovante <kbd>P</kbd>
         </button>
       </div>
     {/if}

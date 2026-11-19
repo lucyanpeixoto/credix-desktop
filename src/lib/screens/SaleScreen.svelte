@@ -849,7 +849,7 @@
         </div>
       {/if}
       {#if done.print}
-        <div class="alert" class:ok={done.print.ok}>{done.print.ok ? 'Cupom impresso.' : `Não imprimiu: ${done.print.message}`}</div>
+        <div class="alert" class:ok={done.print.ok}>{done.print.ok ? 'Comprovante impresso.' : `Não imprimiu: ${done.print.message}`}</div>
       {/if}
       {#if done.carne}
         <div class="alert" class:ok={done.carne.ok}>{done.carne.ok ? done.carne.message : `Carnê não imprimiu: ${done.carne.message}`}</div>

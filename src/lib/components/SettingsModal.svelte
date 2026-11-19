@@ -45,7 +45,7 @@
     status = null
     try {
       await sendToPrinter(form, testTicket(form))
-      status = { ok: true, text: 'Enviado. Confira se saiu o cupom de teste.' }
+      status = { ok: true, text: 'Enviado. Confira se saiu o comprovante de teste.' }
     } catch (e) {
       status = { ok: false, text: String((e as Error)?.message ?? e) }
     } finally {
@@ -61,12 +61,12 @@
 </script>
 
 <Modal title="Configurações do terminal" {onclose} width="560px">
-  <h3>Cupom</h3>
+  <h3>Comprovante</h3>
   {#if !inTauri()}
     <div class="alert warn">Você está no navegador: a impressão só funciona no app instalado.</div>
   {/if}
   <label>
-    Tipo do cupom (venda e recebimento)
+    Tipo do comprovante (venda e recebimento)
     <select bind:value={form.receiptFormat}>
       <option value="loja">Padrão da loja ({storeFormat === 'meia_a4' ? 'meia folha A4' : 'térmica'})</option>
       <option value="termica">Térmica (bobina)</option>
@@ -76,7 +76,7 @@
   {#if halfSheet(form)}
     <p class="muted small">O comprovante abre no navegador; escolha a impressora A4 na janela de impressão. A térmica abaixo é opcional (gaveta).</p>
   {/if}
-  <label class="check"><input type="checkbox" bind:checked={form.autoPrint} /> Imprimir o cupom automaticamente</label>
+  <label class="check"><input type="checkbox" bind:checked={form.autoPrint} /> Imprimir o comprovante automaticamente</label>
 
   <h3>Impressora térmica{#if halfSheet(form)} <small class="muted">(opcional)</small>{/if}</h3>
   <label>
@@ -106,7 +106,7 @@
       {/if}
     </label>
     <p class="muted small">
-      No Windows, instale a impressora com o driver do fabricante (ou "Generic / Text Only"). O cupom vai em modo RAW.
+      No Windows, instale a impressora com o driver do fabricante (ou "Generic / Text Only"). O comprovante vai em modo RAW.
     </p>
   {/if}
 
