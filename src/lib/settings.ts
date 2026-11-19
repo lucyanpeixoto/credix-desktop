@@ -1,6 +1,10 @@
 // Configurações do terminal, gravadas no próprio computador.
 
 export type PrinterMode = 'none' | 'network' | 'system'
+/** Cupom: o formato escolhido pela loja no web, ou um fixo neste computador. */
+export type ReceiptFormat = 'loja' | 'termica' | 'meia_a4'
+/** Carnê: folha A4 pelo navegador ou matricial LX-300 (formulário pré-impresso). */
+export type CarneFormat = 'none' | 'a4' | 'lx300'
 
 export interface Settings {
   serverUrl: string
@@ -16,7 +20,9 @@ export interface Settings {
   autoPrint: boolean
   /** Abre a gaveta quando entra dinheiro. */
   openDrawer: boolean
-  /** Matricial do carnê (LX-300), instalada no computador; vazio = sem carnê. */
+  receiptFormat: ReceiptFormat
+  carneFormat: CarneFormat
+  /** Matricial do carnê (LX-300), instalada no computador. */
   carnePrinter: string
   /** Ajuste fino do carnê no formulário, em mm (+ direita / + desce). */
   carneDx: number
@@ -39,13 +45,15 @@ export const defaults: Settings = {
   printerName: '',
   paperColumns: 48,
   autoPrint: false,
+  receiptFormat: 'loja',
+  carneFormat: 'a4',
   openDrawer: true,
   carnePrinter: '',
   carneDx: 0,
   carneDy: 0,
   carneBold: false,
   catalogView: 'cards',
-  rev: 1,
+  rev: 2,
 }
 
 export function loadSettings(): Settings {
@@ -55,9 +63,11 @@ export function loadSettings(): Settings {
     const s: Settings = { ...defaults, rev: 0, ...JSON.parse(raw) }
     // 0.2.23: a impressão automática passou a vir desligada; desliga uma vez
     // nos caixas que já estavam com ela ligada (quem quiser religa no F12).
-    if (s.rev < 1) {
-      s.autoPrint = false
-      s.rev = 1
+    if (s.rev < 1) s.autoPrint = false
+    // 0.2.24: carnê em A4; quem já tinha a matricial configurada continua nela.
+    if (s.rev < 2) s.carneFormat = s.carnePrinter ? 'lx300' : 'a4'
+    if (s.rev < 2) {
+      s.rev = 2
       saveSettings(s)
     }
     return s

@@ -10,7 +10,7 @@
   import PriceCheck from '../components/PriceCheck.svelte'
   import { loadHeld, MAX_HELD, saveHeld, type HeldSale } from '../held'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
-  import { canPrintReceipt, kickDrawer, printCarne, printSale, type PrintResult } from '../print'
+  import { canPrintCarne, canPrintReceipt, kickDrawer, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -54,7 +54,7 @@
   async function carne() {
     if (!done || printingCarne) return
     printingCarne = true
-    done.carne = await printCarne(done.sale.id)
+    done.carne = await printCarne(done.sale)
     printingCarne = false
   }
 
@@ -856,7 +856,7 @@
       {/if}
     </div>
     {#snippet footer()}
-      {#if done?.sale.payment_type === 'crediario' && session.settings.carnePrinter}
+      {#if done?.sale.payment_type === 'crediario' && canPrintCarne(session.settings)}
         <button onclick={carne} disabled={printingCarne}>{printingCarne ? 'Enviando…' : 'Imprimir carnê'}</button>
       {/if}
       <button onclick={reprint} disabled={!canPrintReceipt(session.settings)}>Imprimir <kbd>P</kbd></button>

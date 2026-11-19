@@ -27,17 +27,21 @@ const base = () => ({
   phone: session.company?.phone,
 })
 
-/** Loja sem térmica: venda e recebimento saem em meia folha A4, pelo navegador. */
-export const halfSheet = (): boolean => session.company?.receipt_format === 'meia_a4'
+/** Cupom em meia folha A4, pelo navegador: escolhido neste caixa (F12) ou, no padrão, pela loja no web. */
+export const halfSheet = (s: Settings = session.settings): boolean =>
+  s.receiptFormat === 'meia_a4' || (s.receiptFormat === 'loja' && session.company?.receipt_format === 'meia_a4')
 
 /** Dá para imprimir o comprovante da venda/recebimento (térmica configurada ou meia folha). */
-export const canPrintReceipt = (s: Settings): boolean => halfSheet() || printerReady(s)
+export const canPrintReceipt = (s: Settings): boolean => halfSheet(s) || printerReady(s)
 
-async function openHalfSheet(url: string | undefined): Promise<PrintResult> {
-  if (!url) return { ok: false, message: 'O servidor ainda não manda o comprovante em meia folha. Atualize o Credix.' }
+/** Dá para imprimir o carnê neste caixa. */
+export const canPrintCarne = (s: Settings): boolean => s.carneFormat === 'a4' || (s.carneFormat === 'lx300' && !!s.carnePrinter)
+
+async function openHalfSheet(url: string | undefined, what = 'O comprovante em meia folha'): Promise<PrintResult> {
+  if (!url) return { ok: false, message: `${what}: o servidor ainda não manda o link. Atualize o Credix.` }
   try {
     await openInBrowser(url + (url.includes('?') ? '&' : '?') + 'auto=1')
-    return { ok: true, message: 'Comprovante aberto no navegador para imprimir (meia folha A4).' }
+    return { ok: true, message: `${what} abriu no navegador para imprimir (folha A4).` }
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message ?? e) }
   }
@@ -105,9 +109,12 @@ export async function printMovement(m: CashMovement): Promise<PrintResult> {
 // Carnê na matricial (LX-300), com o ajuste fino deste computador.
 const carneAdjust = (s: Settings): CarneAdjust => ({ dx: s.carneDx, dy: s.carneDy, bold: s.carneBold })
 
-/** Imprime o carnê das parcelas em aberto da venda. */
-export async function printCarne(saleId: string): Promise<PrintResult> {
+/** Imprime o carnê das parcelas em aberto da venda: folha A4 no navegador ou na matricial. */
+export async function printCarne(sale: Pick<Sale, 'id' | 'carne_a4_url'>): Promise<PrintResult> {
   const s = session.settings
+  if (s.carneFormat === 'a4') return openHalfSheet(sale.carne_a4_url ?? undefined, 'O carnê')
+  if (s.carneFormat !== 'lx300' || !s.carnePrinter) return { ok: false, message: 'Escolha o tipo de carnê em Configurações (F12).' }
+  const saleId = sale.id
   try {
     const data = await session.api.carne(saleId)
     if (!data.sheets.length) return { ok: false, message: 'Esta venda não tem parcelas em aberto para o carnê.' }

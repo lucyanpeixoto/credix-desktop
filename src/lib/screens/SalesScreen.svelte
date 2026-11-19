@@ -5,7 +5,7 @@
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
   import { fmt, fmtDate, PAYMENT_LABELS, todayIso } from '../money'
-  import { canPrintReceipt, printCarne, printSale, type PrintResult } from '../print'
+  import { canPrintCarne, canPrintReceipt, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -179,7 +179,7 @@
   async function carne() {
     if (!detail || printingCarne) return
     printingCarne = true
-    print = await printCarne(detail.id)
+    print = await printCarne(detail)
     printingCarne = false
   }
 
@@ -472,8 +472,10 @@
         {#if canCarne}
           <button
             onclick={carne}
-            disabled={printingCarne || !session.settings.carnePrinter}
-            title={session.settings.carnePrinter ? 'Imprime as parcelas em aberto na matricial' : 'Escolha a impressora do carnê em Configurações (F12)'}
+            disabled={printingCarne || !canPrintCarne(session.settings)}
+            title={!canPrintCarne(session.settings)
+              ? 'Escolha o tipo de carnê em Configurações (F12)'
+              : session.settings.carneFormat === 'a4' ? 'Abre o carnê em folha A4 para imprimir' : 'Imprime as parcelas em aberto na matricial'}
           >
             <Icon name="printer" size={16} /> {printingCarne ? 'Enviando…' : 'Imprimir carnê'}
           </button>
