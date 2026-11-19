@@ -56,6 +56,9 @@
   let waive = $state(false)
   let discountInput = $state('')
   let notes = $state('')
+  let showNotes = $state(false)
+  /** Vendas abertas/recolhidas à mão; sem escolha, só as com atraso abrem. */
+  let opened = $state<Record<string, boolean>>({})
 
   // Como recebe
   let usePixOnline = $state(false)
@@ -202,6 +205,8 @@
     waive = false
     discountInput = ''
     notes = ''
+    showNotes = false
+    opened = {}
     usePixOnline = false
     rows = [{ type: 'dinheiro', amount: '' }]
     tenderedInput = ''
@@ -243,6 +248,10 @@
       }))
       .sort((a, b) => a.list[0].due_date.localeCompare(b.list[0].due_date) || Number(a.code) - Number(b.code))
   })
+  const isOpen = (g: { id: string; late: boolean }) => opened[g.id] ?? (groups.length === 1 || g.late)
+  /** Quanto do valor cai na venda (aparece no cabeçalho quando ela está recolhida). */
+  const saleHit = (ids: string[]) =>
+    round2(ids.reduce((s, id) => s + ((p) => (p ? p.principal_paid + p.surcharge_paid : 0))(paidPreview(id)), 0))
   const overdueTotal = $derived(round2((data?.installments ?? []).filter((i) => i.days_late > 0).reduce((s, i) => s + dueOf(i), 0)))
   const nextDue = $derived(data?.installments.length ? dueOf(data.installments[0]) : 0)
   /** Com destino escolhido, alguma vencida fica sem quitar: o caixa avisa o cliente. */
@@ -376,14 +385,20 @@
             <tbody>
               {#each groups as g (g.id)}
                 {@const all = g.ids.every((id) => selected.includes(id))}
-                <tr class="sale" onclick={() => toggleSale(g.ids)}>
+                {@const open = isOpen(g)}
+                {@const hit = open ? 0 : saleHit(g.ids)}
+                <tr class="sale" onclick={() => (opened[g.id] = !open)} title={open ? 'Recolher as parcelas' : 'Mostrar as parcelas'}>
                   <td><input type="checkbox" checked={all} onclick={(e) => e.stopPropagation()} onchange={() => toggleSale(g.ids)} aria-label={`Marcar a venda #${g.code}`} /></td>
-                  <td colspan="5">
+                  <td colspan="4">
+                    <span class="chev" class:open>›</span>
                     Venda #{g.code}
                     <span class="muted">· {g.list.length} {g.list.length === 1 ? 'parcela' : 'parcelas'} · {fmt(g.total)}</span>
-                    {#if g.late}<span class="badge late">em atraso</span>{/if}
+                    {#if g.late}<span class="badge late">em atraso</span>
+                    {:else if !open}<span class="muted">· próxima em {fmtDate(g.list[0].due_date)}</span>{/if}
                   </td>
+                  <td class="num start">{#if hit > 0}{fmt(hit)}{/if}</td>
                 </tr>
+              {#if open}
               {#each g.list as i (i.id)}
                 {@const p = paidPreview(i.id)}
                 <tr class:hit={!!p} onclick={() => toggle(i.id)}>
@@ -402,6 +417,7 @@
                   </td>
                 </tr>
               {/each}
+              {/if}
               {/each}
             </tbody>
           </table>
@@ -422,6 +438,7 @@
   </section>
 
   <aside class="right">
+    <div class="scroll">
     <div class="panel box">
       <label>
         Valor a receber
@@ -456,7 +473,6 @@
           {#if data.preview.surcharge > 0}<div class="row"><span class="muted">Juros/multa</span><span class="spacer"></span>{fmt(data.preview.surcharge)}</div>{/if}
           {#if data.preview.waived > 0}<div class="row"><span class="muted">Dispensado</span><span class="spacer"></span>−{fmt(data.preview.waived)}</div>{/if}
           {#if discount > 0}<div class="row"><span class="muted">Desconto</span><span class="spacer"></span>−{fmt(discount)}</div>{/if}
-          <div class="grand"><span>A pagar</span><strong>{fmt(toPay)}</strong></div>
         </div>
       {/if}
     </div>
@@ -501,9 +517,17 @@
         <p class="muted small">O QR Code aparece para o cliente pagar. A baixa é feita quando o Pix cair.</p>
       {/if}
 
-      <label>Observação <input bind:value={notes} maxlength="500" disabled={!data} /></label>
+      {#if showNotes || notes}
+        <!-- svelte-ignore a11y_autofocus -->
+        <label>Observação <input bind:value={notes} maxlength="500" disabled={!data} autofocus={showNotes && !notes} /></label>
+      {:else if data}
+        <button class="ghost link" onclick={() => (showNotes = true)}>+ Observação</button>
+      {/if}
+    </div>
     </div>
 
+    <div class="foot">
+    {#if data}<div class="grand"><span>A pagar</span><strong>{fmt(toPay)}</strong></div>{/if}
     {#if leftOverdue && !problem}<div class="alert warn">Fica parcela vencida sem quitar neste recebimento: ela continua em atraso.</div>{/if}
     {#if problem && data}<div class="alert warn">{problem}</div>{/if}
     {#if error}<div class="alert">{error}</div>{/if}
@@ -511,6 +535,7 @@
     <button class="primary big" disabled={!data || !!problem || saving} onclick={confirm}>
       {saving ? 'Gravando…' : usePixOnline ? 'Gerar Pix' : 'Confirmar recebimento'}<kbd>F9</kbd>
     </button>
+    </div>
   </aside>
 </div>
 
@@ -519,14 +544,14 @@
 {:else if modal === 'done' && done}
   <Modal title={`Recebimento #${done.receipt.code}`} onclose={() => (modal = '')} width="460px">
     <div class="done">
+      {#if done.receipt.change > 0}
+        <div class="troco">Troco <strong>{fmt(done.receipt.change)}</strong></div>
+      {/if}
       <div class="row"><span class="muted">Cliente</span><span class="spacer"></span><strong>{done.customer}</strong></div>
       <div class="row"><span class="muted">Recebido</span><span class="spacer"></span><strong>{fmt(done.receipt.total)}</strong></div>
       {#each done.receipt.methods.filter((m) => m.type !== 'desconto') as m, i (i)}
         <div class="row muted small"><span>{PAYMENT_LABELS[m.type] ?? m.type}</span><span class="spacer"></span>{fmt(m.amount)}</div>
       {/each}
-      {#if done.receipt.change > 0}
-        <div class="troco">Troco <strong>{fmt(done.receipt.change)}</strong></div>
-      {/if}
       {#if done.print}
         <div class="alert" class:ok={done.print.ok}>{done.print.ok ? 'Comprovante impresso.' : `Não imprimiu: ${done.print.message}`}</div>
       {/if}
@@ -612,16 +637,20 @@
   }
   th {
     text-align: left;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: var(--muted);
-    padding: 12px 16px;
+    color: var(--label);
+    padding: 9px 16px;
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 1;
     border-bottom: 1px solid var(--line-soft);
   }
   td {
-    padding: 14px 16px;
+    padding: 9px 16px;
     border-bottom: 1px solid var(--line-soft);
     font-size: 14px;
     font-weight: 600;
@@ -642,7 +671,7 @@
     text-align: left;
   }
   tr.sale td {
-    padding: 10px 16px;
+    padding: 8px 16px;
     background: #f8fafc;
     font-size: 13px;
     font-weight: 800;
@@ -650,6 +679,17 @@
   }
   tr.sale .muted {
     font-weight: 600;
+  }
+  .chev {
+    display: inline-block;
+    width: 14px;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.12s;
+  }
+  .chev.open {
+    transform: rotate(90deg);
   }
   tr.sale .badge {
     margin-left: 8px;
@@ -672,19 +712,33 @@
     flex: none;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px;
     background: #fff;
     border-left: 1px solid var(--line);
-    overflow: auto;
+    overflow: hidden;
     min-height: 0;
   }
-  /* Sem isto, com a tela em escala 125%/150% (comum no Windows) o painel não
-     cabe e o flex encolhe os itens em vez de rolar: o botão ficava fino. */
-  .right > * {
+  /* O que rola é só o miolo: "A pagar" e o Confirmar ficam sempre à vista,
+     mesmo com a tela em escala 125%/150% (comum no Windows). */
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+  }
+  .scroll > * {
     flex-shrink: 0;
   }
-  .right > .panel {
+  .foot {
+    flex: none;
+    display: grid;
+    gap: 10px;
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .scroll > .panel {
     border: 0;
     padding: 0;
   }
@@ -706,10 +760,10 @@
     gap: 6px;
   }
   .quick button {
-    height: 32px;
-    padding: 0 10px;
+    height: 40px;
+    padding: 0 14px;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     gap: 6px;
     color: var(--muted);
@@ -728,9 +782,6 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-top: 1px solid var(--line-soft);
-    padding-top: 10px;
-    margin-top: 4px;
     color: #475569;
     font-size: 14px;
     font-weight: 700;
@@ -759,9 +810,6 @@
     font-weight: 700;
     font-size: 13px;
   }
-  .big {
-    margin-top: auto;
-  }
   .done {
     display: grid;
     gap: 8px;
@@ -776,7 +824,8 @@
   }
   .troco strong {
     display: block;
-    font-size: 30px;
+    font-size: 44px;
+    line-height: 1.1;
     font-weight: 800;
   }
 </style>

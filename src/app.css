@@ -6,6 +6,7 @@
   --ink-2: #334155;
   --muted: #64748b;
   --faint: #94a3b8;
+  --label: #475569;
   --line: #e2e8f0;
   --line-soft: #f1f5f9;
   --soft: #f1f5f9;
@@ -115,9 +116,9 @@ textarea:focus {
 label {
   display: grid;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--muted);
+  color: var(--label);
 }
 
 button {
@@ -317,6 +318,21 @@ kbd {
   font-size: 28px;
   font-weight: 800;
   line-height: 1.15;
+}
+
+/* Troco da venda concluída: o caixa lê de relance e fala para o cliente. */
+.money-box.hero {
+  padding: 14px;
+  text-align: center;
+}
+
+.money-box.hero span {
+  font-size: 13px;
+}
+
+.money-box.hero strong {
+  font-size: 46px;
+  line-height: 1.1;
 }
 
 .small {
