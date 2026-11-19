@@ -9,7 +9,7 @@ navegador do próprio sistema. Consome a API do [Credix](https://github.com/lucy
 **Venda** (`F1`)
 - Leitor de código de barras (código exato) e busca por nome/SKU; `3*código` lança 3 unidades
 - Grade de produtos por categoria, carrinho com quantidade, item avulso (`F6`), desconto em R$ ou % (`F7`)
-- Cliente (`F4`), com **cadastro rápido** (nome, CPF, telefone) se ainda não existir
+- Cliente (`F4`), com **cadastro completo** se ainda não existir: nome, CPF, telefone, e-mail, observações e endereço (o CEP preenche rua, bairro, cidade e UF pelo ViaCEP)
 - Pagamento (`F9`): dinheiro com troco, Pix, débito, crédito, **Pix com QR** (Mercado Pago, se a loja usa) e **crediário** (parcelas, intervalo, 1º vencimento, entrada)
 
 **Receber** (`F2`)

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Customer, Sale } from '../api'
+  import type { Customer, CustomerAddress, NewCustomer, Sale } from '../api'
   import { Attempt } from '../attempt'
   import { fmt } from '../money'
   import { session } from '../session.svelte'
@@ -28,11 +28,76 @@
   let timer: ReturnType<typeof setTimeout> | undefined
   let seq = 0
 
-  // Cadastro rápido
+  // Cadastro (mesmos campos do Credix web)
+  const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']
+  const emptyForm = () => ({
+    name: '',
+    cpf: '',
+    phone: '',
+    email: '',
+    information: '',
+    address: { zipcode: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' },
+  })
   let creating = $state(false)
-  let form = $state({ name: '', cpf: '', phone: '' })
+  let form = $state(emptyForm())
   let saving = $state(false)
+  let numberEl: HTMLInputElement | undefined = $state()
+  let zipStatus = $state<'' | 'loading' | 'notfound' | 'offline'>('')
+  let zipLooked = ''
   const attempt = new Attempt()
+
+  const digitsOf = (v: string) => v.replace(/\D/g, '')
+  const fmtCpf = (v: string) => {
+    const d = digitsOf(v)
+    return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : v
+  }
+  const fmtPhone = (v: string) => {
+    const d = digitsOf(v)
+    if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+    if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+    return v
+  }
+  const fmtZip = (v: string) => {
+    const d = digitsOf(v)
+    return d.length === 8 ? d.replace(/(\d{5})(\d{3})/, '$1-$2') : v
+  }
+
+  /** Com os 8 dígitos do CEP, busca no ViaCEP (como o web) e preenche rua, bairro, cidade e UF. */
+  async function lookupZip() {
+    const d = digitsOf(form.address.zipcode)
+    if (d.length !== 8) {
+      zipStatus = ''
+      zipLooked = ''
+      return
+    }
+    if (d === zipLooked) return
+    zipLooked = d
+    form.address.zipcode = fmtZip(d)
+    zipStatus = 'loading'
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 5000)
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${d}/json/`, { signal: ctrl.signal })
+      const data = await res.json()
+      if (digitsOf(form.address.zipcode) !== d) return
+      if (!res.ok || data?.erro) {
+        zipStatus = 'notfound'
+        return
+      }
+      const a = form.address
+      a.street = data.logradouro || a.street
+      a.neighborhood = data.bairro || a.neighborhood
+      a.city = data.localidade || a.city
+      a.state = UFS.includes(data.uf) ? data.uf : a.state
+      zipStatus = ''
+      numberEl?.focus()
+    } catch {
+      zipLooked = ''
+      zipStatus = 'offline'
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   function onInput() {
     clearTimeout(timer)
@@ -116,10 +181,15 @@
     const term = search.trim()
     const digits = term.replace(/\D/g, '')
     form = {
+      ...emptyForm(),
       name: digits.length >= 8 && digits.length === term.replace(/[.\-()\s]/g, '').length ? '' : term,
       cpf: digits.length === 11 && !/^\(?\d{2}\)?\s?9/.test(term) ? digits : '',
       phone: digits.length >= 10 && digits.length <= 11 && /^\(?\d{2}\)?\s?9/.test(term) ? digits : '',
     }
+    form.cpf = fmtCpf(form.cpf)
+    form.phone = fmtPhone(form.phone)
+    zipStatus = ''
+    zipLooked = ''
     error = ''
     creating = true
   }
@@ -130,10 +200,25 @@
     saving = true
     error = ''
     try {
-      const body = {
+      const text = (v: string) => v.trim() || null
+      const a = form.address
+      const address: CustomerAddress = {
+        zipcode: digitsOf(a.zipcode) || null,
+        street: text(a.street),
+        number: text(a.number),
+        complement: text(a.complement),
+        neighborhood: text(a.neighborhood),
+        city: text(a.city),
+        state: a.state || null,
+      }
+      const body: NewCustomer = {
         name: form.name.trim(),
-        cpf: form.cpf.replace(/\D/g, '') || null,
-        phone: form.phone.replace(/\D/g, '') || null,
+        cpf: digitsOf(form.cpf) || null,
+        phone: digitsOf(form.phone) || null,
+        email: text(form.email),
+        information: text(form.information),
+        // O Credix só grava o endereço com CEP ou rua.
+        address: address.zipcode || address.street ? address : null,
       }
       const c = await session.api.createCustomer(body, attempt.keyFor(body))
       onpick(c)
@@ -158,10 +243,38 @@
       <!-- svelte-ignore a11y_autofocus -->
       <label>Nome completo <input bind:value={form.name} maxlength="255" required autofocus /></label>
       <div class="grid2">
-        <label>CPF <span class="opt">(obrigatório só no crediário da loja, se ela exigir)</span><input bind:value={form.cpf} inputmode="numeric" placeholder="000.000.000-00" /></label>
-        <label>Telefone / WhatsApp <input bind:value={form.phone} inputmode="tel" placeholder="(00) 00000-0000" /></label>
+        <label>CPF <span class="opt">(obrigatório só no crediário da loja, se ela exigir)</span>
+          <input bind:value={form.cpf} onblur={() => (form.cpf = fmtCpf(form.cpf))} inputmode="numeric" maxlength="14" placeholder="000.000.000-00" />
+        </label>
+        <label>Telefone / WhatsApp
+          <input bind:value={form.phone} onblur={() => (form.phone = fmtPhone(form.phone))} inputmode="tel" maxlength="20" placeholder="(00) 00000-0000" />
+        </label>
       </div>
-      <p class="muted small">Endereço e outros dados podem ser completados depois no Credix web.</p>
+      <label>E-mail <input type="email" bind:value={form.email} maxlength="255" placeholder="opcional" /></label>
+      <label>Observações <textarea bind:value={form.information} rows="2" placeholder="opcional"></textarea></label>
+
+      <fieldset class="address">
+        <legend>Endereço <span class="opt">(opcional)</span></legend>
+        <div class="cols">
+          <label class="c2">CEP
+            <input bind:value={form.address.zipcode} oninput={lookupZip} onblur={lookupZip} inputmode="numeric" maxlength="9" placeholder="00000-000" />
+            {#if zipStatus === 'loading'}<span class="hint">Buscando o CEP…</span>
+            {:else if zipStatus === 'notfound'}<span class="hint bad">CEP não encontrado.</span>
+            {:else if zipStatus === 'offline'}<span class="hint warn">Não deu para buscar o CEP agora. Preencha à mão.</span>{/if}
+          </label>
+          <label class="c4">Rua <input bind:value={form.address.street} maxlength="255" /></label>
+          <label class="c2">Número <input bind:this={numberEl} bind:value={form.address.number} maxlength="50" /></label>
+          <label class="c4">Complemento <input bind:value={form.address.complement} maxlength="255" /></label>
+          <label class="c3">Bairro <input bind:value={form.address.neighborhood} maxlength="255" /></label>
+          <label class="c2">Cidade <input bind:value={form.address.city} maxlength="255" /></label>
+          <label class="c1">UF
+            <select bind:value={form.address.state}>
+              <option value="">—</option>
+              {#each UFS as uf (uf)}<option value={uf}>{uf}</option>{/each}
+            </select>
+          </label>
+        </div>
+      </fieldset>
       {#if error}<div class="alert">{error}</div>{/if}
     </form>
   {:else}
@@ -274,6 +387,51 @@
   .opt {
     font-weight: 500;
     color: var(--faint);
+  }
+  textarea {
+    height: auto;
+    padding: 10px 14px;
+    resize: vertical;
+  }
+  .address {
+    margin: 0;
+    padding: 14px;
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    min-width: 0;
+  }
+  legend {
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .c1 {
+    grid-column: span 1;
+  }
+  .c2 {
+    grid-column: span 2;
+  }
+  .c3 {
+    grid-column: span 3;
+  }
+  .c4 {
+    grid-column: span 4;
+  }
+  .hint {
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .hint.bad {
+    color: var(--danger);
+  }
+  .hint.warn {
+    color: #b45309;
   }
   .newbtn {
     flex: none;
