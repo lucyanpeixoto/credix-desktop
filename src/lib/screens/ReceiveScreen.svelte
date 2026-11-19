@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import type { Customer, PixCharge, Receipt, Receivable, Sale } from '../api'
+  import type { Customer, OpenInstallment, PixCharge, Receipt, Receivable, Sale } from '../api'
   import { Attempt } from '../attempt'
   import CustomerPicker from '../components/CustomerPicker.svelte'
   import Modal from '../components/Modal.svelte'
@@ -58,7 +58,9 @@
   let previewTimer: ReturnType<typeof setTimeout> | undefined
   let seq = 0
 
-  const amount = $derived(data?.preview.amount ?? 0)
+  // Sem valor e sem parcela marcada, a prévia do servidor é "pagar tudo": aqui vale como nada a abater.
+  const nothing = $derived(!selected.length && parseMoney(amountInput) <= 0)
+  const amount = $derived(nothing ? 0 : (data?.preview.amount ?? 0))
   const discount = $derived(parseMoney(discountInput))
   const toPay = $derived(round2(Math.max(0, amount - discount)))
   const typedAmount = $derived(parseMoney(amountInput))
@@ -113,7 +115,10 @@
       const res = await session.api.receivable(c.id)
       if (mine !== seq) return
       data = res
-      amountInput = toInput(res.total_due)
+      // Abre com as vencidas no valor; em dia, nada marcado.
+      const overdue = round2(res.installments.filter((i) => i.days_late > 0).reduce((s, i) => s + i.principal + i.surcharge, 0))
+      amountInput = overdue > 0 ? toInput(overdue) : ''
+      if (overdue > 0 && overdue + 0.004 < res.total_due) refreshPreview()
     } catch (e) {
       if (mine === seq) error = (e as Error).message
     } finally {
@@ -136,6 +141,13 @@
         if (mine === seq) error = (e as Error).message
       }
     }, 250)
+  }
+
+  /** Marca ou desmarca todas as parcelas da venda. */
+  function toggleSale(ids: string[]) {
+    const all = ids.every((id) => selected.includes(id))
+    selected = all ? selected.filter((x) => !ids.includes(x)) : [...new Set([...selected, ...ids])]
+    refreshPreview()
   }
 
   function toggle(id: string) {
@@ -172,7 +184,25 @@
     return Math.round((due - new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()) / 86_400_000)
   }
 
-  const paidPreview = (id: string) => data?.preview.rows.find((r) => r.installment_id === id)
+  const paidPreview = (id: string) => (nothing ? undefined : data?.preview.rows.find((r) => r.installment_id === id))
+
+  /** Parcelas por venda: dentro da venda por vencimento; as vendas pela parcela mais antiga. */
+  const groups = $derived.by(() => {
+    const bySale = new Map<string, OpenInstallment[]>()
+    for (const i of data?.installments ?? []) bySale.set(i.sale_id, [...(bySale.get(i.sale_id) ?? []), i])
+    return [...bySale.values()]
+      .map((list) => [...list].sort((a, b) => a.due_date.localeCompare(b.due_date) || a.installment_number - b.installment_number))
+      .map((list) => ({
+        id: list[0].sale_id,
+        code: list[0].sale_code,
+        list,
+        ids: list.map((i) => i.id),
+        total: round2(list.reduce((s, i) => s + i.principal + i.surcharge, 0)),
+        late: list.some((i) => i.days_late > 0),
+      }))
+      .sort((a, b) => a.list[0].due_date.localeCompare(b.list[0].due_date) || Number(a.code) - Number(b.code))
+  })
+  const overdueTotal = $derived(round2((data?.installments ?? []).filter((i) => i.days_late > 0).reduce((s, i) => s + i.principal + i.surcharge, 0)))
 
   async function confirm() {
     if (!data || !customer || saving || problem || pix) return
@@ -272,7 +302,7 @@
         </div>
         {#if data}
           <div class="due">
-            <span>Devido hoje</span>
+            <span>Em aberto{#if overdueTotal > 0}{" · "}<b class="late">vencido {fmt(overdueTotal)}</b>{/if}</span>
             <strong>{fmt(data.total_due)}</strong>
           </div>
         {/if}
@@ -291,15 +321,24 @@
           <table>
             <thead>
               <tr>
-                <th></th><th>Venda</th><th>Parcela</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Juros/multa</th><th class="num">Abate</th>
+                <th></th><th>Parcela</th><th>Vencimento</th><th>Valor</th><th>Juros/multa</th><th>Abate</th>
               </tr>
             </thead>
             <tbody>
-              {#each data.installments as i (i.id)}
+              {#each groups as g (g.id)}
+                {@const all = g.ids.every((id) => selected.includes(id))}
+                <tr class="sale" onclick={() => toggleSale(g.ids)}>
+                  <td><input type="checkbox" checked={all} onclick={(e) => e.stopPropagation()} onchange={() => toggleSale(g.ids)} aria-label={`Marcar a venda #${g.code}`} /></td>
+                  <td colspan="5">
+                    Venda #{g.code}
+                    <span class="muted">· {g.list.length} {g.list.length === 1 ? 'parcela' : 'parcelas'} · {fmt(g.total)}</span>
+                    {#if g.late}<span class="badge late">em atraso</span>{/if}
+                  </td>
+                </tr>
+              {#each g.list as i (i.id)}
                 {@const p = paidPreview(i.id)}
                 <tr class:hit={!!p} onclick={() => toggle(i.id)}>
                   <td><input type="checkbox" checked={selected.includes(i.id)} onclick={(e) => e.stopPropagation()} onchange={() => toggle(i.id)} /></td>
-                  <td>#{i.sale_code}</td>
                   <td>{i.is_down_payment ? 'Entrada' : `${i.installment_number}ª`}</td>
                   <td>
                     {fmtDate(i.due_date)}
@@ -307,12 +346,13 @@
                     {:else if daysTo(i.due_date) <= 7}<span class="badge soon">vence em {daysTo(i.due_date)}d</span>
                     {:else}<span class="badge">em dia</span>{/if}
                   </td>
-                  <td class="num">{fmt(i.principal)}</td>
-                  <td class="num">{i.surcharge ? fmt(i.surcharge) : '—'}</td>
-                  <td class="num">
+                  <td class="num start">{fmt(i.principal)}</td>
+                  <td class="num start">{i.surcharge ? fmt(i.surcharge) : '—'}</td>
+                  <td class="num start">
                     {#if p}{fmt(p.principal_paid + p.surcharge_paid)}{#if p.settled} ✓{/if}{/if}
                   </td>
                 </tr>
+              {/each}
               {/each}
             </tbody>
           </table>
@@ -320,7 +360,7 @@
         <footer class="row muted small pad">
           {selected.length ? `${selected.length} parcela(s) marcada(s)` : 'Sem parcelas marcadas: o valor abate das mais antigas.'}
           <span class="spacer"></span>
-          Total devido hoje: <strong>{fmt(data.total_due)}</strong>
+          Total em aberto: <strong>{fmt(data.total_due)}</strong>
         </footer>
       {:else}
         <p class="pad">Este cliente não tem parcelas em aberto. 🎉</p>
@@ -535,6 +575,25 @@
   tbody tr.hit {
     background: var(--brand-50);
   }
+  td.num.start {
+    text-align: left;
+  }
+  tr.sale td {
+    padding: 10px 16px;
+    background: #f8fafc;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+  tr.sale .muted {
+    font-weight: 600;
+  }
+  tr.sale .badge {
+    margin-left: 8px;
+  }
+  .due .late {
+    color: var(--danger);
+  }
   td.num:last-child {
     color: var(--ok);
     font-weight: 800;
@@ -556,6 +615,11 @@
     border-left: 1px solid var(--line);
     overflow: auto;
     min-height: 0;
+  }
+  /* Sem isto, com a tela em escala 125%/150% (comum no Windows) o painel não
+     cabe e o flex encolhe os itens em vez de rolar: o botão ficava fino. */
+  .right > * {
+    flex-shrink: 0;
   }
   .right > .panel {
     border: 0;
