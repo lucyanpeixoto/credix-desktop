@@ -679,19 +679,21 @@
       <button class="primary big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda <kbd>F9</kbd></button>
       <div class="grid2">
         <button onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
-        <button class="danger" disabled={!items.length} onclick={() => (modal = 'clear')}>Cancelar <kbd>Ctrl+Del</kbd></button>
-      </div>
-      <div class="grid2">
         {#if items.length || !held.length}
           <button disabled={!items.length} onclick={holdSale} title="O cliente foi ao provador? Guarde a venda e atenda o próximo.">Pôr em espera <kbd>Ctrl+E</kbd></button>
         {:else}
           <button class="held-on" onclick={() => (modal = 'held')}>Retomar venda <kbd>Ctrl+E</kbd></button>
         {/if}
-        <button class:held-on={held.length > 0} disabled={!held.length} onclick={() => (modal = 'held')}>Em espera{held.length ? ` (${held.length})` : ''}</button>
       </div>
-      <div class="grid2">
+      <!-- Ações raras em linha menor; o Cancelar fica na ponta, longe do resto. -->
+      <div class="minor">
         <button class="ghost link lookup" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
         <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar <kbd>F10</kbd></button>
+        {#if held.length}
+          <button class="ghost link lookup held-on" onclick={() => (modal = 'held')}>Em espera ({held.length})</button>
+        {/if}
+        <span class="spacer"></span>
+        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')}>Cancelar <kbd>Ctrl+Del</kbd></button>
       </div>
     </div>
   </aside>
@@ -862,14 +864,14 @@
 {:else if modal === 'done' && done}
   <Modal title={`Venda #${done.sale.code} concluída`} onclose={() => (modal = '')} width="460px">
     <div class="done">
+      {#if done.cashTendered && done.cashTendered > cashDueOf(done.sale)}
+        <div class="money-box hero"><span>Troco</span><strong>{fmt(round2(done.cashTendered - cashDueOf(done.sale)))}</strong></div>
+      {/if}
       <div class="row"><span class="muted">Total</span><span class="spacer"></span><strong>{fmt(done.sale.total)}</strong></div>
       {#if done.sale.credit_used}
         <div class="row"><span class="muted">Vale-troca</span><span class="spacer"></span><span class="green">− {fmt(done.sale.credit_used)}</span></div>
       {/if}
       <div class="row"><span class="muted">Pagamento</span><span class="spacer"></span><span>{done.sale.payment_label ?? PAYMENT_LABELS[done.sale.payment_type]}</span></div>
-      {#if done.cashTendered && done.cashTendered > cashDueOf(done.sale)}
-        <div class="money-box center"><span>Troco</span><strong>{fmt(round2(done.cashTendered - cashDueOf(done.sale)))}</strong></div>
-      {/if}
       {#if done.sale.payment_type === 'crediario' && done.sale.installments?.length}
         <div class="muted small">
           {done.sale.installments.length} parcela(s), última em {fmtDate(done.sale.installments[done.sale.installments.length - 1].due_date)}
@@ -1288,8 +1290,19 @@
     color: var(--warn);
     background: var(--warn-bg);
   }
+  .minor {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+  .minor button {
+    padding: 0 8px;
+    white-space: nowrap;
+  }
   .lookup {
-    height: 30px;
+    height: 32px;
     justify-content: center;
     font-size: 13px;
   }

@@ -10,6 +10,7 @@
   import { fmt } from './lib/money'
   import SettingsModal from './lib/components/SettingsModal.svelte'
   import { printerReady } from './lib/printer'
+  import { halfSheet } from './lib/print'
   import Lock from './lib/screens/Lock.svelte'
   import OpenCash from './lib/screens/OpenCash.svelte'
   import Pair from './lib/screens/Pair.svelte'
@@ -135,8 +136,10 @@
           <kbd>F8</kbd>
         </button>
       {/if}
-      {#if printerReady(session.settings)}
-        <span class="pill good"><Icon name="printer" size={14} /> Impressora</span>
+      {#if halfSheet(session.settings)}
+        <span class="pill good" title="O comprovante sai em meia folha A4, pela impressora do computador"><Icon name="printer" size={14} /> Comprovante A4</span>
+      {:else if printerReady(session.settings)}
+        <span class="pill good" title="Impressora térmica configurada"><Icon name="printer" size={14} /> Térmica</span>
       {:else}
         <span class="pill"><Icon name="printer" size={14} /> Sem impressora</span>
       {/if}
