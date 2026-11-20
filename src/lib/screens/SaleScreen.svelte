@@ -574,7 +574,7 @@
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div class="prow" role="button" tabindex="-1" class:incart={!!q} class:hl={searching && i === highlighted} onclick={() => add(p)}>
               <span class="info">
-                <span class="name">{p.name}</span>
+                <span class="name" title={p.name}>{p.name}</span>
                 {#if p.sku}<span class="sku">SKU {p.sku}</span>{/if}
               </span>
               {#if grade.length}
@@ -601,7 +601,7 @@
             {@const q = qtyById.get(p.id)}
             {#snippet body()}
               {#if q}<span class="qty">{q}</span>{/if}
-              <span class="name">{p.name}</span>
+              <span class="name" title={p.name}>{p.name}</span>
               {#if p.sku}<span class="sku">SKU {p.sku}</span>{/if}
               <span class="bottom">
                 <span class="price">{fmt(p.price)}</span>
@@ -1235,8 +1235,8 @@
   .name {
     padding-right: 28px;
     min-height: 40px;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     line-height: 20px;
     color: var(--ink);
     display: -webkit-box;
@@ -1252,10 +1252,11 @@
     align-items: flex-end;
     gap: 8px;
   }
+  /* O nome é o que a vendedora procura; o preço só confirma, então fica mais leve. */
   .price {
-    font-size: 16px;
-    font-weight: 800;
-    color: var(--ink);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-2);
   }
   .stock {
     font-size: 11px;
