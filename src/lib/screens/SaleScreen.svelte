@@ -1116,7 +1116,12 @@
     display: flex;
     flex-direction: column;
   }
+  /* Na lista o nome é o que a vendedora procura; o preço só confirma. Tamanho e
+     cor vão aqui porque ".info span" (do carrinho) ganharia de ".name" sozinho. */
   .prow .name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
     min-height: 0;
     padding-right: 0;
     -webkit-line-clamp: 1;
@@ -1136,6 +1141,9 @@
     flex: none;
     width: 100px;
     text-align: right;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-2);
   }
   .prow .qty {
     position: static;
@@ -1235,8 +1243,8 @@
   .name {
     padding-right: 28px;
     min-height: 40px;
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
     line-height: 20px;
     color: var(--ink);
     display: -webkit-box;
@@ -1252,11 +1260,10 @@
     align-items: flex-end;
     gap: 8px;
   }
-  /* O nome é o que a vendedora procura; o preço só confirma, então fica mais leve. */
   .price {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--ink-2);
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--ink);
   }
   .stock {
     font-size: 11px;
