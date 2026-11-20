@@ -448,12 +448,17 @@
       return
     }
     if (modalStack.open) return
+    // Shift+F7: "Alterar total". Era F8, que em todas as telas abre o Caixa.
+    if (e.key === 'F7' && e.shiftKey) {
+      e.preventDefault()
+      if (items.length) openTotal()
+      return
+    }
     const map: Record<string, () => void> = {
       F3: focusSearch,
       F4: () => (modal = 'customer'),
       F6: openCustom,
       F7: () => items.length && openDiscount(),
-      F8: () => items.length && openTotal(),
       F9: () => items.length && (modal = 'checkout'),
       F10: () => (modal = 'lookup'),
     }
@@ -655,6 +660,7 @@
             <button onclick={() => setQty(item, item.quantity + 1)} aria-label="Aumentar"><Icon name="plus" size={16} /></button>
           </div>
           <span class="num total">{fmt(round2(item.unit_price * item.quantity))}</span>
+          <button class="ghost del" onclick={() => remove(item)} title="Tirar da venda" aria-label="Tirar {item.name} da venda"><Icon name="x" size={16} /></button>
         </div>
       {:else}
         <div class="free">
@@ -673,7 +679,7 @@
         <span class="num" class:green={discount > 0}>{discount ? `− ${fmt(discount)}` : fmt(0)}</span>
       </div>
       <div class="grand">
-        <span>Total <button class="ghost link" onclick={openTotal} disabled={!items.length}>Alterar <kbd>F8</kbd></button></span>
+        <span>Total <button class="ghost link" onclick={openTotal} disabled={!items.length}>Alterar <kbd>Shift+F7</kbd></button></span>
         <strong>{fmt(total)}</strong>
       </div>
       <button class="primary big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda <kbd>F9</kbd></button>
@@ -1267,6 +1273,14 @@
     gap: 12px;
     padding: 12px 16px;
     border-bottom: 1px solid var(--line-soft);
+  }
+  .del {
+    margin: 0 -8px 0 -6px;
+    padding: 6px;
+    color: var(--muted);
+  }
+  .del:hover {
+    color: var(--danger);
   }
   .info {
     flex: 1;

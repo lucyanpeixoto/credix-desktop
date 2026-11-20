@@ -96,9 +96,7 @@
       tab = 'sales'
     } else if (e.key === 'F8' && session.cash?.session) {
       e.preventDefault()
-      // Na venda com itens o F8 é "Alterar total": espera a tela agir e só
-      // abre o Caixa se ela não abriu nada (senão abriam os dois juntos).
-      setTimeout(() => !modalStack.open && session.seller && (cashOpen = true))
+      if (!modalStack.open && session.seller) cashOpen = true
     } else if (e.key === 'F12') {
       e.preventDefault()
       settingsOpen = true
@@ -194,7 +192,7 @@
 {/if}
 
 {#if helpOpen}
-  <ShortcutsModal onclose={() => (helpOpen = false)} />
+  <ShortcutsModal cash={!!session.cash?.session} onclose={() => (helpOpen = false)} />
 {/if}
 
 {#if cashOpen && session.seller}
