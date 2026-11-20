@@ -1,10 +1,10 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
 
-  let { onclose }: { onclose: () => void } = $props()
+  let { cash, onclose }: { cash: boolean; onclose: () => void } = $props()
 
   /** Espelha os tratadores de teclado das telas: mudou um atalho lá, muda aqui. */
-  const GROUPS: { title: string; keys: [string, string][] }[] = [
+  const ALL: { title: string; keys: [string, string][] }[] = [
     {
       title: 'Em qualquer tela',
       keys: [
@@ -25,7 +25,7 @@
         ['F4', 'Escolher o cliente'],
         ['F6', 'Item avulso'],
         ['F7', 'Desconto'],
-        ['F8', 'Alterar o total (com itens na venda)'],
+        ['Shift+F7', 'Alterar o total'],
         ['F9', 'Finalizar venda'],
         ['F10', 'Consultar preço'],
         ['Ctrl+E', 'Pôr em espera ou retomar'],
@@ -60,6 +60,9 @@
       ],
     },
   ]
+
+  /** Sem caixa aberto nesta loja, o F8 não faz nada: não aparece na lista. */
+  const GROUPS = $derived(ALL.map((g) => ({ ...g, keys: g.keys.filter(([k]) => cash || k !== 'F8') })))
 </script>
 
 <Modal title="Atalhos do teclado" {onclose} width="860px">
