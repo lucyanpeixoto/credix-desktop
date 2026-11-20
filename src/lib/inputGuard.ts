@@ -116,8 +116,16 @@ function onInput(e: Event) {
   el.setSelectionRange(caret, caret)
 }
 
+// Rodinha do mouse sobre um campo numérico com foco muda o valor sem a pessoa
+// perceber. Tirar o foco faz a rodinha só rolar a tela.
+function onWheel(e: Event) {
+  const el = e.target
+  if (el instanceof HTMLInputElement && el.type === 'number' && el === document.activeElement) el.blur()
+}
+
 export function installInputGuard() {
   document.addEventListener('keydown', onKeydown, true)
   document.addEventListener('paste', onPaste, true)
   document.addEventListener('input', onInput, true)
+  document.addEventListener('wheel', onWheel, { capture: true, passive: true })
 }
