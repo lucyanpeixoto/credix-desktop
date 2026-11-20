@@ -9,6 +9,7 @@
   import { modalStack } from './lib/components/modalStack'
   import { fmt } from './lib/money'
   import SettingsModal from './lib/components/SettingsModal.svelte'
+  import ShortcutsModal from './lib/components/ShortcutsModal.svelte'
   import { printerReady } from './lib/printer'
   import { halfSheet } from './lib/print'
   import Lock from './lib/screens/Lock.svelte'
@@ -25,6 +26,7 @@
   let tab = $state<'sale' | 'receive' | 'sales'>('sale')
   let settingsOpen = $state(false)
   let cashOpen = $state(false)
+  let helpOpen = $state(false)
   /** Caixa aberto direto no fechamento (venda depois do horário, "abrir o de amanhã"). */
   let cashClosing = $state(false)
   /** Venda aberta na aba Vendas para receber na aba Receber. */
@@ -68,6 +70,7 @@
   function lockNow() {
     settingsOpen = false
     cashOpen = false
+    helpOpen = false
     cashClosing = false
     tab = 'sale'
     session.lock()
@@ -77,7 +80,12 @@
     session.touch()
     if (e.key === 'F5' || (e.ctrlKey && e.key.toLowerCase() === 'r')) e.preventDefault()
     if (!session.seller || modalStack.open) return
-    if (e.key === 'F1') {
+    // "?" abre a lista de atalhos; com o cursor num campo (onde "?" é texto), Ctrl+/.
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)
+    if (e.ctrlKey ? e.key === '/' || e.key === '?' : e.key === '?' && !typing) {
+      e.preventDefault()
+      helpOpen = true
+    } else if (e.key === 'F1') {
       e.preventDefault()
       tab = 'sale'
     } else if (e.key === 'F2') {
@@ -88,7 +96,9 @@
       tab = 'sales'
     } else if (e.key === 'F8' && session.cash?.session) {
       e.preventDefault()
-      cashOpen = true
+      // Na venda com itens o F8 é "Alterar total": espera a tela agir e só
+      // abre o Caixa se ela não abriu nada (senão abriam os dois juntos).
+      setTimeout(() => !modalStack.open && session.seller && (cashOpen = true))
     } else if (e.key === 'F12') {
       e.preventDefault()
       settingsOpen = true
@@ -148,6 +158,7 @@
         {session.seller.first_name}
         <Icon name="lock" size={15} />
       </button>
+      <button class="icon help" onclick={() => (helpOpen = true)} aria-label="Atalhos do teclado" title="Atalhos do teclado (?)">?</button>
       <button class="icon" onclick={() => (settingsOpen = true)} aria-label="Configurações (F12)"><Icon name="gear" /></button>
     </header>
     <main>
@@ -180,6 +191,10 @@
 
 {#if settingsOpen}
   <SettingsModal onclose={() => (settingsOpen = false)} />
+{/if}
+
+{#if helpOpen}
+  <ShortcutsModal onclose={() => (helpOpen = false)} />
 {/if}
 
 {#if cashOpen && session.seller}
@@ -327,6 +342,11 @@
     height: 38px;
     padding: 0;
     color: #475569;
+  }
+  .icon.help {
+    flex: none;
+    font-size: 16px;
+    font-weight: 800;
   }
   main {
     min-height: 0;

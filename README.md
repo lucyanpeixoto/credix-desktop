@@ -70,6 +70,7 @@ O PDV usa a API `/api/pdv` do Credix (token do terminal + vendedor e PIN em cada
 | `F11` | Trocar vendedor (bloqueia o caixa) |
 | `Ctrl+Del` | Cancelar a venda em andamento |
 | `F12` | Configurações |
+| `?` | Lista de atalhos na tela (com o cursor num campo, `Ctrl+/`) |
 | `1`–`6` | Forma de pagamento (na finalização); com o cursor num campo de valor, `Alt`+número |
 | `Enter` / `P` | Nova venda / reimprimir (na tela de concluído) |
 
