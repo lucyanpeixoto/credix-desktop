@@ -52,7 +52,7 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'held' | 'lookup' | 'exchange'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'nostock' | 'held' | 'lookup' | 'exchange'>('')
   let picking = $state<{ product: Product; quantity: number } | null>(null)
 
   function pickVariant(v: ProductVariant) {
@@ -182,7 +182,17 @@
   /** Aviso no seletor de grade (leu o código de uma variação que não existe mais). */
   let variantNotice = $state('')
 
-  function add(p: Product, quantity = 1, variant: ProductVariant | null = null, notice = '') {
+  /** Item que passaria do estoque do sistema, esperando o caixa confirmar. */
+  let shortage = $state<{ product: Product; quantity: number; variant: ProductVariant | null; available: number; wanted: number } | null>(null)
+
+  function confirmShortage() {
+    const s = shortage
+    shortage = null
+    modal = ''
+    if (s) add(s.product, s.quantity, s.variant, '', true)
+  }
+
+  function add(p: Product, quantity = 1, variant: ProductVariant | null = null, notice = '', force = false) {
     // Produto com grade: pergunta o tamanho/cor antes de pôr no carrinho.
     if (p.has_variants && !variant) {
       if (!p.variants?.length) return say('error', `“${p.name}” está com grade, mas sem tamanho/cor cadastrado.`)
@@ -194,6 +204,15 @@
       return
     }
     const existing = items.find((i) => i.product_id === p.id && (i.variant_id ?? null) === (variant?.id ?? null))
+    // Passou do estoque do sistema: avisa e deixa o caixa decidir (a peça pode
+    // estar na mão e o cadastro errado), em vez de vender no negativo calado.
+    const available = variant ? variant.stock : (p.stock ?? null)
+    const wanted = (existing?.quantity ?? 0) + quantity
+    if (!force && available !== null && wanted > available) {
+      shortage = { product: p, quantity, variant, available, wanted }
+      modal = 'nostock'
+      return
+    }
     if (existing) {
       existing.quantity += quantity
       items = [...items.filter((i) => i !== existing), existing]
@@ -248,7 +267,11 @@
 
   function setQty(item: CartItem, q: number) {
     if (!Number.isFinite(q) || q < 1) return remove(item)
-    item.quantity = Math.min(9999, Math.floor(q))
+    const next = Math.min(9999, Math.floor(q))
+    if (next > item.quantity && item.stock != null && next > item.stock) {
+      say('error', item.stock > 0 ? `O sistema só tem ${item.stock} de “${item.name}”.` : `“${item.name}” está sem estoque no sistema.`)
+    }
+    item.quantity = next
   }
 
   function remove(item: CartItem) {
@@ -422,6 +445,13 @@
 
   function windowKeydown(e: KeyboardEvent) {
     if (!active) return
+    if (modal === 'nostock') {
+      if (e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        confirmShortage()
+      }
+      return
+    }
     // Teclas 1–9 escolhem o tamanho/cor.
     if (modal === 'variant' && picking && /^[1-9]$/.test(e.key)) {
       const v = picking.product.variants?.[Number(e.key) - 1]
@@ -855,6 +885,36 @@
           modal = ''
         }}>Descartar</button
       >
+    {/snippet}
+  </Modal>
+{:else if modal === 'nostock' && shortage}
+  {@const label = `${shortage.product.name}${shortage.variant ? ` (${shortage.variant.label})` : ''}`}
+  <Modal
+    title={shortage.available > 0 ? 'Estoque insuficiente' : 'Sem estoque no sistema'}
+    onclose={() => {
+      shortage = null
+      modal = ''
+      focusSearch()
+    }}
+    width="420px"
+  >
+    {#if shortage.available > 0}
+      <p>O sistema só tem <strong>{shortage.available}</strong> de <strong>{label}</strong>, e a venda ficaria com {shortage.wanted}.</p>
+    {:else}
+      <p><strong>{label}</strong> está sem estoque no sistema.</p>
+    {/if}
+    <p class="muted">Se a peça está na sua mão, pode vender: o estoque fica negativo e precisa ser acertado depois.</p>
+    {#snippet footer()}
+      <!-- svelte-ignore a11y_autofocus -->
+      <button
+        autofocus
+        onclick={() => {
+          shortage = null
+          modal = ''
+          focusSearch()
+        }}>Voltar</button
+      >
+      <button class="primary" onclick={confirmShortage}>Vender assim mesmo <kbd>S</kbd></button>
     {/snippet}
   </Modal>
 {:else if modal === 'checkout'}

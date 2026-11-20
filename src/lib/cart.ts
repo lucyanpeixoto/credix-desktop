@@ -10,6 +10,8 @@ export interface CartItem {
   sku: string | null
   unit_price: number
   quantity: number
+  /** Estoque no sistema quando entrou no carrinho; null = sem controle. */
+  stock?: number | null
 }
 
 let n = 0
@@ -25,6 +27,7 @@ export function fromProduct(p: Product, quantity = 1, variant: ProductVariant | 
     sku: p.sku,
     unit_price: p.price,
     quantity,
+    stock: variant ? variant.stock : (p.stock ?? null),
   }
 }
 
