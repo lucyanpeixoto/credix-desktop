@@ -158,11 +158,12 @@ export interface ConsignmentItem {
   unit_price: number
 }
 
-/** Condicional: peças que o cliente levou para provar em casa. */
+/** Condicional (o cliente levou para provar em casa) ou reserva (guardada na loja). */
 export interface Consignment {
   id: string
   code: number
   status: 'open' | 'closed'
+  kind: 'consignment' | 'reservation'
   due_date: string
   overdue: boolean
   notes: string | null
