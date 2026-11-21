@@ -146,6 +146,34 @@ export interface CustomerAddress {
   state: string | null
 }
 
+export interface ConsignmentItem {
+  id: number
+  product_id: string
+  product_variant_id: string | null
+  name: string
+  sku: string | null
+  variant_label: string | null
+  quantity: number
+  /** Preço de hoje: é o que a venda vai cobrar. */
+  unit_price: number
+}
+
+/** Condicional: peças que o cliente levou para provar em casa. */
+export interface Consignment {
+  id: string
+  code: number
+  status: 'open' | 'closed'
+  due_date: string
+  overdue: boolean
+  notes: string | null
+  created_at: string
+  seller: string | null
+  customer: Customer | null
+  pieces: number
+  total: number
+  items: ConsignmentItem[]
+}
+
 /** Mesmos campos do cadastro de cliente do Credix web. */
 export interface NewCustomer {
   name: string
@@ -493,6 +521,18 @@ export class Api {
   }
   createCustomer(body: NewCustomer, key?: string) {
     return this.request<Customer>('POST', 'customers', { body, key })
+  }
+
+  // Condicional: as peças saem do estoque até o cliente voltar.
+  consignments() {
+    return this.request<{ data: Consignment[] }>('GET', 'consignments')
+  }
+  createConsignment(body: Record<string, unknown>, key?: string) {
+    return this.request<Consignment>('POST', 'consignments', { body, key })
+  }
+  /** O cliente devolveu tudo: as peças voltam ao estoque. */
+  returnConsignment(id: string, key?: string) {
+    return this.request<Consignment>('POST', `consignments/${id}/return`, { body: {}, key })
   }
 
   // Vendas
