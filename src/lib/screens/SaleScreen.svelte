@@ -783,29 +783,31 @@
         <strong>{fmt(total)}</strong>
       </div>
       <button class="primary big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda <kbd>F9</kbd></button>
+      <!-- Venda que ainda não vai ser paga: espera (provador) ou condicional (casa). -->
       <div class="grid2">
-        <button onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
-        {#if items.length || !held.length}
-          <button disabled={!items.length} onclick={holdSale} title="O cliente foi ao provador? Guarde a venda e atenda o próximo.">Pôr em espera <kbd>Ctrl+E</kbd></button>
-        {:else}
-          <button class="held-on" onclick={() => (modal = 'held')}>Retomar venda <kbd>Ctrl+E</kbd></button>
-        {/if}
-      </div>
-      <!-- Ações raras em linha menor; o Cancelar fica na ponta, longe do resto. -->
-      <div class="minor">
-        <button class="ghost link lookup" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
-        <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar <kbd>F10</kbd></button>
+        <div class="hold">
+          {#if items.length || !held.length}
+            <button disabled={!items.length} onclick={holdSale} title="O cliente foi ao provador? Guarde a venda e atenda o próximo. (Ctrl+E)">Pôr em espera {#if !held.length}<kbd>Ctrl+E</kbd>{/if}</button>
+            {#if held.length}
+              <button class="held-on count" onclick={() => (modal = 'held')} title="Vendas em espera: retomar" aria-label="{held.length} em espera: retomar">{held.length}</button>
+            {/if}
+          {:else}
+            <button class="held-on" onclick={() => (modal = 'held')}>Retomar ({held.length}) <kbd>Ctrl+E</kbd></button>
+          {/if}
+        </div>
         <button
-          class="ghost link lookup"
           class:held-on={consignmentCount > 0}
           onclick={() => (modal = 'consignment')}
-          title="O cliente leva as peças para provar em casa: saem do estoque até ele voltar (Ctrl+D)">Condicional{consignmentCount ? ` (${consignmentCount})` : ''}</button
+          title="O cliente leva as peças para provar em casa: saem do estoque até ele voltar">Condicional{consignmentCount ? ` (${consignmentCount})` : ''} <kbd>Ctrl+D</kbd></button
         >
-        {#if held.length}
-          <button class="ghost link lookup held-on" onclick={() => (modal = 'held')}>Em espera ({held.length})</button>
-        {/if}
+      </div>
+      <!-- Ferramentas raras numa linha só; o Cancelar fica na ponta, longe do resto. -->
+      <div class="minor">
+        <button class="ghost link lookup" onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
+        <button class="ghost link lookup" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
+        <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar <kbd>F10</kbd></button>
         <span class="spacer"></span>
-        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')}>Cancelar <kbd>Ctrl+Del</kbd></button>
+        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')} title="Cancelar a venda (Ctrl+Del)">Cancelar</button>
       </div>
     </div>
   </aside>
@@ -1474,15 +1476,30 @@
     color: var(--warn);
     background: var(--warn-bg);
   }
+  .hold {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+  }
+  .hold button:first-child {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .hold .count {
+    flex: none;
+    min-width: 40px;
+    padding: 0 10px;
+    font-weight: 800;
+  }
   .minor {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
+    gap: 2px;
     min-width: 0;
   }
   .minor button {
-    padding: 0 8px;
+    padding: 0 6px;
     white-space: nowrap;
   }
   .lookup {
