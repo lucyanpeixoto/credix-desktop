@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { ApiError, type Category, type CreditLimit, type Customer, type Product, type ProductVariant, type Sale } from '../api'
+  import { ApiError, type Category, type Consignment, type ConsignmentItem, type CreditLimit, type Customer, type Product, type ProductVariant, type Sale } from '../api'
   import { cashDueOf, fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
   import Checkout from '../components/Checkout.svelte'
+  import ConsignmentModal from '../components/ConsignmentModal.svelte'
   import CustomerPicker from '../components/CustomerPicker.svelte'
   import Modal from '../components/Modal.svelte'
   import { modalStack } from '../components/modalStack'
@@ -52,7 +53,7 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'nostock' | 'held' | 'lookup' | 'exchange'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'nostock' | 'held' | 'lookup' | 'exchange' | 'consignment'>('')
   let picking = $state<{ product: Product; quantity: number } | null>(null)
 
   function pickVariant(v: ProductVariant) {
@@ -343,6 +344,54 @@
     customer = null
     discount = 0
     search = ''
+    charging = null
+  }
+
+  // ── Condicional (peças que o cliente leva para provar em casa) ─
+  /** Condicional cujas peças que ficaram estão no carrinho para cobrar. */
+  let charging = $state<{ id: string; code: number } | null>(null)
+  let consignmentCount = $state(0)
+
+  async function loadConsignmentCount() {
+    try {
+      consignmentCount = (await session.api.consignments()).data.length
+    } catch {
+      // Sem conexão: o número só não aparece no botão.
+    }
+  }
+  onMount(loadConsignmentCount)
+
+  function consignmentCreated(c: Consignment) {
+    modal = ''
+    reset()
+    loadConsignmentCount()
+    loadProducts()
+    say('ok', `Condicional #${c.code}: ${c.pieces} ${c.pieces === 1 ? 'peça' : 'peças'} com ${c.customer?.name.split(' ')[0] ?? 'o cliente'}`)
+    focusSearch()
+  }
+
+  /** O cliente voltou: as peças que ficaram vão para o carrinho; a venda encerra o condicional. */
+  function chargeConsignment(c: Consignment, kept: { item: ConsignmentItem; quantity: number }[]) {
+    // A venda que estava aberta vai para a espera, para não misturar.
+    if (items.length && !holdSale()) return
+    items = kept.map(({ item, quantity }) => ({
+      key: newKey(),
+      product_id: item.product_id,
+      variant_id: item.product_variant_id,
+      variant_label: item.variant_label,
+      name: item.name,
+      sku: item.sku,
+      unit_price: item.unit_price,
+      quantity,
+      // Estas peças já saíram do estoque no condicional: sem aviso de falta.
+      stock: null,
+    }))
+    customer = c.customer
+    discount = 0
+    charging = { id: c.id, code: c.code }
+    modal = ''
+    say('ok', `Condicional #${c.code}: confira e finalize a venda`)
+    focusSearch()
   }
 
   // ── Vendas em espera ─────────────────────────────────────────
@@ -356,7 +405,7 @@
       return false
     }
     held = [
-      { id: newKey(), at: new Date().toISOString(), seller: session.seller?.name ?? null, customer, items: $state.snapshot(items), discount },
+      { id: newKey(), at: new Date().toISOString(), seller: session.seller?.name ?? null, customer, items: $state.snapshot(items), discount, consignment: charging },
       ...held,
     ]
     saveHeld(held)
@@ -375,6 +424,7 @@
     items = h.items
     customer = h.customer
     discount = Math.min(h.discount, subtotalOf(h.items))
+    charging = h.consignment ?? null
     modal = ''
     say('ok', 'Venda retomada')
     focusSearch()
@@ -411,7 +461,9 @@
     done = { sale, cashTendered }
     modal = 'done'
     session.loadCash()
+    const closedConsignment = !!charging
     reset()
+    if (closedConsignment) loadConsignmentCount()
     loadProducts()
     const cashIn =
       (sale.payment_type === 'dinheiro' && sale.total - (sale.credit_used ?? 0) > 0) ||
@@ -499,6 +551,9 @@
     } else if (e.ctrlKey && e.key.toLowerCase() === 't') {
       e.preventDefault()
       modal = 'exchange'
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'd') {
+      e.preventDefault()
+      modal = 'consignment'
     } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
       // Ctrl+E: com carrinho, põe em espera; vazio, abre a lista para retomar.
       e.preventDefault()
@@ -673,6 +728,21 @@
       {/if}
     </div>
 
+    {#if charging}
+      <div class="alert warn row charging">
+        <span>Condicional #{charging.code}: peças que ficaram com o cliente. Finalizar a venda encerra o condicional.</span>
+        <span class="spacer"></span>
+        <button
+          class="ghost"
+          title="Desvincular: o condicional continua aberto"
+          aria-label="Desvincular do condicional"
+          onclick={() => {
+            reset()
+            focusSearch()
+          }}><Icon name="x" size={16} /></button
+        >
+      </div>
+    {/if}
     <div class="cart">
       {#each items as item (item.key)}
         <div class="line">
@@ -725,6 +795,12 @@
       <div class="minor">
         <button class="ghost link lookup" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
         <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar <kbd>F10</kbd></button>
+        <button
+          class="ghost link lookup"
+          class:held-on={consignmentCount > 0}
+          onclick={() => (modal = 'consignment')}
+          title="O cliente leva as peças para provar em casa: saem do estoque até ele voltar (Ctrl+D)">Condicional{consignmentCount ? ` (${consignmentCount})` : ''}</button
+        >
         {#if held.length}
           <button class="ghost link lookup held-on" onclick={() => (modal = 'held')}>Em espera ({held.length})</button>
         {/if}
@@ -844,6 +920,22 @@
       focusSearch()
     }}
   />
+{:else if modal === 'consignment'}
+  <ConsignmentModal
+    items={charging ? [] : items}
+    {customer}
+    oncustomer={(c) => (customer = c)}
+    oncreated={consignmentCreated}
+    oncharge={chargeConsignment}
+    onchanged={() => {
+      loadConsignmentCount()
+      loadProducts()
+    }}
+    onclose={() => {
+      modal = ''
+      focusSearch()
+    }}
+  />
 {:else if modal === 'held'}
   <Modal
     title="Vendas em espera"
@@ -923,6 +1015,7 @@
     {discount}
     {customer}
     limit={debt?.credit ?? null}
+    consignmentId={charging?.id ?? null}
     oncustomer={(c) => (customer = c)}
     ondone={finished}
     onclose={() => (modal = '')}
@@ -1366,6 +1459,15 @@
   .info .variant {
     color: var(--brand);
     font-weight: 700;
+  }
+  .charging {
+    margin: 0 12px 4px;
+    font-size: 12px;
+  }
+  .charging button {
+    height: 28px;
+    padding: 0 6px;
+    color: inherit;
   }
   .held-on {
     border-color: var(--warn);

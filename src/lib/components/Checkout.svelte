@@ -13,12 +13,15 @@
     discount,
     customer,
     limit = null,
+    consignmentId = null,
     oncustomer,
     ondone,
     onclose,
   }: {
     /** Limite do crediário do cliente; passar dele só avisa, não bloqueia. */
     limit?: CreditLimit | null
+    /** Venda das peças que ficaram de um condicional: o servidor encerra ele junto. */
+    consignmentId?: string | null
     items: CartItem[]
     discount: number
     /** Cliente da venda; com saldo de vale-troca, ele abate o total. */
@@ -144,6 +147,7 @@
       customer_id: customer?.id ?? null,
       use_credit: credit > 0 || null,
       discount: discount || null,
+      consignment_id: consignmentId,
       items: items.map((i) =>
         i.product_id
           ? { product_id: i.product_id, product_variant_id: i.variant_id ?? null, quantity: i.quantity }

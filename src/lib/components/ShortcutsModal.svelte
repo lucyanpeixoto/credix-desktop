@@ -30,6 +30,7 @@
         ['F10', 'Consultar preço'],
         ['Ctrl+E', 'Pôr em espera ou retomar'],
         ['Ctrl+T', 'Troca'],
+        ['Ctrl+D', 'Condicional (peças para provar em casa)'],
         ['Ctrl+Del', 'Cancelar a venda'],
       ],
     },
