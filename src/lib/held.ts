@@ -15,7 +15,7 @@ export interface HeldSale {
   items: CartItem[]
   discount: number
   /** Venda das peças que ficaram de um condicional (encerra ele ao finalizar). */
-  consignment?: { id: string; code: number } | null
+  consignment?: { id: string; code: number; kind?: 'consignment' | 'reservation' } | null
 }
 
 const KEY = 'credix-desktop.held-sales'

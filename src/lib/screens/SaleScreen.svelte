@@ -349,7 +349,7 @@
 
   // ── Condicional (peças que o cliente leva para provar em casa) ─
   /** Condicional cujas peças que ficaram estão no carrinho para cobrar. */
-  let charging = $state<{ id: string; code: number } | null>(null)
+  let charging = $state<{ id: string; code: number; kind?: 'consignment' | 'reservation' } | null>(null)
   let consignmentCount = $state(0)
 
   async function loadConsignmentCount() {
@@ -366,7 +366,9 @@
     reset()
     loadConsignmentCount()
     loadProducts()
-    say('ok', `Condicional #${c.code}: ${c.pieces} ${c.pieces === 1 ? 'peça' : 'peças'} com ${c.customer?.name.split(' ')[0] ?? 'o cliente'}`)
+    const who = c.customer?.name.split(' ')[0] ?? 'o cliente'
+    const n = `${c.pieces} ${c.pieces === 1 ? 'peça' : 'peças'}`
+    say('ok', c.kind === 'reservation' ? `Reserva #${c.code}: ${n} para ${who}` : `Condicional #${c.code}: ${n} com ${who}`)
     focusSearch()
   }
 
@@ -388,9 +390,9 @@
     }))
     customer = c.customer
     discount = 0
-    charging = { id: c.id, code: c.code }
+    charging = { id: c.id, code: c.code, kind: c.kind }
     modal = ''
-    say('ok', `Condicional #${c.code}: confira e finalize a venda`)
+    say('ok', `${c.kind === 'reservation' ? 'Reserva' : 'Condicional'} #${c.code}: confira e finalize a venda`)
     focusSearch()
   }
 
@@ -730,12 +732,16 @@
 
     {#if charging}
       <div class="alert warn row charging">
-        <span>Condicional #{charging.code}: peças que ficaram com o cliente. Finalizar a venda encerra o condicional.</span>
+        <span
+          >{charging.kind === 'reservation'
+            ? `Reserva #${charging.code}: peças que o cliente vai levar. Finalizar a venda encerra a reserva.`
+            : `Condicional #${charging.code}: peças que ficaram com o cliente. Finalizar a venda encerra o condicional.`}</span
+        >
         <span class="spacer"></span>
         <button
           class="ghost"
-          title="Desvincular: o condicional continua aberto"
-          aria-label="Desvincular do condicional"
+          title="Desvincular: continua em aberto"
+          aria-label="Desvincular"
           onclick={() => {
             reset()
             focusSearch()
@@ -796,9 +802,11 @@
           {/if}
         </div>
         <button
+          class="consign"
           class:held-on={consignmentCount > 0}
           onclick={() => (modal = 'consignment')}
-          title="O cliente leva as peças para provar em casa: saem do estoque até ele voltar">Condicional{consignmentCount ? ` (${consignmentCount})` : ''} <kbd>Ctrl+D</kbd></button
+          title="Reservar a peça na loja ou deixar o cliente levar para provar em casa: sai do estoque até ele voltar (Ctrl+D)"
+          >Reserva / Condicional{consignmentCount ? ` (${consignmentCount})` : ''}</button
         >
       </div>
       <!-- Ferramentas raras numa linha só; o Cancelar fica na ponta, longe do resto. -->
@@ -1485,6 +1493,11 @@
     flex: 1;
     min-width: 0;
     white-space: nowrap;
+  }
+  .consign {
+    padding: 0 6px;
+    white-space: nowrap;
+    min-width: 0;
   }
   .hold .count {
     flex: none;
