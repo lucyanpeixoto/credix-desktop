@@ -361,6 +361,12 @@
   }
   onMount(loadConsignmentCount)
 
+  let consignmentStart = $state<'new' | 'open'>('new')
+  function openConsignment(start: 'new' | 'open') {
+    consignmentStart = start
+    modal = 'consignment'
+  }
+
   function consignmentCreated(c: Consignment) {
     modal = ''
     reset()
@@ -555,7 +561,7 @@
       modal = 'exchange'
     } else if (e.ctrlKey && e.key.toLowerCase() === 'd') {
       e.preventDefault()
-      modal = 'consignment'
+      openConsignment('new')
     } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
       // Ctrl+E: com carrinho, põe em espera; vazio, abre a lista para retomar.
       e.preventDefault()
@@ -571,6 +577,7 @@
 <svelte:window onkeydown={windowKeydown} />
 
 <div class="screen">
+ <div class="cols">
   <section class="catalog">
     <label class="search">
       <span class="lens"><Icon name="search" size={22} /></span>
@@ -789,36 +796,36 @@
         <strong>{fmt(total)}</strong>
       </div>
       <button class="primary big" disabled={!items.length} onclick={() => (modal = 'checkout')}>Finalizar venda <kbd>F9</kbd></button>
-      <!-- Venda que ainda não vai ser paga: espera (provador) ou condicional (casa). -->
+      <!-- Só o que mexe nesta venda; o resto (consultar, troca, listas) mora na barra de baixo. -->
       <div class="grid2">
-        <div class="hold">
-          {#if items.length || !held.length}
-            <button disabled={!items.length} onclick={holdSale} title="O cliente foi ao provador? Guarde a venda e atenda o próximo. (Ctrl+E)">Pôr em espera {#if !held.length}<kbd>Ctrl+E</kbd>{/if}</button>
-            {#if held.length}
-              <button class="held-on count" onclick={() => (modal = 'held')} title="Vendas em espera: retomar" aria-label="{held.length} em espera: retomar">{held.length}</button>
-            {/if}
-          {:else}
-            <button class="held-on" onclick={() => (modal = 'held')}>Retomar ({held.length}) <kbd>Ctrl+E</kbd></button>
-          {/if}
-        </div>
+        <button disabled={!items.length} onclick={holdSale} title="O cliente foi ao provador? Guarde a venda e atenda o próximo. (Ctrl+E)">Pôr em espera <kbd>Ctrl+E</kbd></button>
         <button
-          class="consign"
-          class:held-on={consignmentCount > 0}
-          onclick={() => (modal = 'consignment')}
+          disabled={!items.length || !!charging}
+          onclick={() => openConsignment('new')}
           title="Reservar a peça na loja ou deixar o cliente levar para provar em casa: sai do estoque até ele voltar (Ctrl+D)"
-          >Reserva / Condicional{consignmentCount ? ` (${consignmentCount})` : ''}</button
+          >Reserva / Condicional</button
         >
       </div>
-      <!-- Ferramentas raras numa linha só; o Cancelar fica na ponta, longe do resto. -->
       <div class="minor">
         <button class="ghost link lookup" onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
-        <button class="ghost link lookup" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
-        <button class="ghost link lookup" onclick={() => (modal = 'lookup')}>Consultar <kbd>F10</kbd></button>
         <span class="spacer"></span>
-        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')} title="Cancelar a venda (Ctrl+Del)">Cancelar</button>
+        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')} title="Cancelar a venda (Ctrl+Del)">Cancelar venda</button>
       </div>
     </div>
   </aside>
+ </div>
+  <!-- O que não é desta venda: ferramentas do balcão e o que ficou guardado. -->
+  <footer class="bar">
+    <button class="ghost" onclick={() => (modal = 'lookup')}><Icon name="search" size={15} /> Consultar preço <kbd>F10</kbd></button>
+    <button class="ghost" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
+    <span class="spacer"></span>
+    <button class="ghost" class:held-on={held.length > 0} disabled={!held.length} onclick={() => (modal = 'held')} title="Vendas guardadas neste computador: retomar"
+      >Em espera{#if held.length}<b>{held.length}</b>{/if}</button
+    >
+    <button class="ghost" class:held-on={consignmentCount > 0} onclick={() => openConsignment('open')} title="Peças reservadas ou que o cliente levou para provar: acertar"
+      >Reservas e condicionais{#if consignmentCount}<b>{consignmentCount}</b>{/if}</button
+    >
+  </footer>
 </div>
 
 {#if modal === 'customer'}
@@ -932,6 +939,7 @@
   />
 {:else if modal === 'consignment'}
   <ConsignmentModal
+    start={consignmentStart}
     items={charging ? [] : items}
     {customer}
     oncustomer={(c) => (customer = c)}
@@ -1067,7 +1075,37 @@
   .screen {
     height: 100%;
     display: flex;
+    flex-direction: column;
     min-height: 0;
+  }
+  .cols {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    background: #fff;
+    border-top: 1px solid var(--line);
+  }
+  .bar button {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .bar button b {
+    min-width: 20px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--warn);
+    color: #fff;
+    font-size: 12px;
+    text-align: center;
   }
   .catalog {
     flex: 1;
@@ -1483,27 +1521,6 @@
     border-color: var(--warn);
     color: var(--warn);
     background: var(--warn-bg);
-  }
-  .hold {
-    display: flex;
-    gap: 6px;
-    min-width: 0;
-  }
-  .hold button:first-child {
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-  }
-  .consign {
-    padding: 0 6px;
-    white-space: nowrap;
-    min-width: 0;
-  }
-  .hold .count {
-    flex: none;
-    min-width: 40px;
-    padding: 0 10px;
-    font-weight: 800;
   }
   .minor {
     display: flex;

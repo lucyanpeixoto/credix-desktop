@@ -11,6 +11,7 @@
 
   let {
     items,
+    start = 'new',
     customer,
     oncustomer,
     oncreated,
@@ -20,6 +21,8 @@
   }: {
     /** Carrinho aberto: são as peças que o cliente vai levar. */
     items: CartItem[]
+    /** Aba em que abre: pelo carrinho é "Nova"; pela barra de baixo, "Em aberto". */
+    start?: 'new' | 'open'
     customer: Customer | null
     oncustomer: (c: Customer) => void
     oncreated: (c: Consignment) => void
@@ -39,7 +42,7 @@
   }
 
   // svelte-ignore state_referenced_locally
-  let tab = $state<'new' | 'open'>(items.length ? 'new' : 'open')
+  let tab = $state<'new' | 'open'>(items.length && start === 'new' ? 'new' : 'open')
   let list = $state<Consignment[]>([])
   let loading = $state(true)
   let error = $state('')
