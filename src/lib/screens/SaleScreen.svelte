@@ -230,6 +230,7 @@
 
   async function submitSearch() {
     clearTimeout(timer)
+    const typed = search
     const { quantity, term } = parseQuantityPrefix(search)
     if (!term) return
     if (highlighted >= 0 && products[highlighted] && searching) return add(products[highlighted], quantity)
@@ -246,7 +247,15 @@
     }
     await loadProducts()
     if (products.length === 1) return add(products[0], quantity)
-    if (!products.length) say('error', `Nenhum produto com “${term}”.`)
+    if (!products.length) {
+      say('error', `Nenhum produto com “${term}”.`)
+      // Limpa o campo: o próximo bipe do leitor não pode emendar no código que falhou.
+      if (search === typed) {
+        search = ''
+        loadProducts()
+      }
+      focusSearch()
+    }
   }
 
   function searchKeydown(e: KeyboardEvent) {
