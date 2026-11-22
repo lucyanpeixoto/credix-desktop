@@ -247,8 +247,8 @@
     </div>
     <p class="sum">{res ? 'Vai levar' : 'Ficou com'} {keptPieces} de {settlePieces.length} {settlePieces.length === 1 ? 'peça' : 'peças'}{backPieces ? ` · ${backPieces} ${res ? 'desistiu' : 'voltaram'}` : ''}</p>
     <div class="row">
-      <button class="ghost link" onclick={() => settling && (kept = Object.fromEntries(settling.items.map((i) => [i.id, 0])))}>{res ? 'Desistiu de tudo' : 'Devolveu tudo'}</button>
-      <button class="ghost link" onclick={() => settling && (kept = Object.fromEntries(settling.items.map((i) => [i.id, i.quantity])))}>{res ? 'Vai levar tudo' : 'Ficou com tudo'}</button>
+      <button class="all back" onclick={() => settling && (kept = Object.fromEntries(settling.items.map((i) => [i.id, 0])))}>{res ? 'Desistiu de tudo' : 'Devolveu tudo'}</button>
+      <button class="all kept" onclick={() => settling && (kept = Object.fromEntries(settling.items.map((i) => [i.id, i.quantity])))}>{res ? 'Vai levar tudo' : 'Ficou com tudo'}</button>
     </div>
     {#if keptPieces > 0}
       <p class="muted">
@@ -594,5 +594,28 @@
   .row {
     display: flex;
     gap: 16px;
+  }
+  /* Atalhos do acerto: vermelho para tudo voltar, verde para ficar com tudo. */
+  .row .all {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .row .all.back {
+    border-color: #fecaca;
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+  .row .all.kept {
+    border-color: #a7f3d0;
+    background: var(--ok-bg);
+    color: var(--ok);
+  }
+  .row .all.back:hover {
+    background: #fecaca;
+  }
+  .row .all.kept:hover {
+    background: #d1fae5;
   }
 </style>
