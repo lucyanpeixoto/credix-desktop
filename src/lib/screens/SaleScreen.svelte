@@ -809,7 +809,7 @@
       <div class="minor">
         <button class="ghost link lookup" onclick={openCustom}>Item avulso <kbd>F6</kbd></button>
         <span class="spacer"></span>
-        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')} title="Cancelar a venda (Ctrl+Del)">Cancelar venda</button>
+        <button class="ghost link lookup danger" disabled={!items.length} onclick={() => (modal = 'clear')} title="Cancelar a venda (Ctrl+Del)">Cancelar venda <kbd>Ctrl+Del</kbd></button>
       </div>
     </div>
   </aside>
