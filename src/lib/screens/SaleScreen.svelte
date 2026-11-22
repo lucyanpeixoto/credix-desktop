@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { ApiError, type Category, type Consignment, type ConsignmentItem, type CreditLimit, type Customer, type Product, type ProductVariant, type Sale } from '../api'
+  import { ApiError, outsideLabel, type Category, type Consignment, type ConsignmentItem, type CreditLimit, type Customer, type Product, type ProductVariant, type Sale } from '../api'
   import { cashDueOf, fromProduct, newKey, parseQuantityPrefix, subtotalOf, type CartItem } from '../cart'
   import Checkout from '../components/Checkout.svelte'
   import ConsignmentModal from '../components/ConsignmentModal.svelte'
@@ -627,7 +627,8 @@
       <button
         class:selected={!!vq}
         class:out={v.stock <= 0}
-        title={v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'}
+        class:has-away={!vq && !!outsideLabel(v.outside)}
+        title={(v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque') + (outsideLabel(v.outside) ? ` · ${outsideLabel(v.outside)}` : '')}
         onclick={(e) => {
           e.stopPropagation()
           add(p, 1, v)
@@ -662,6 +663,7 @@
               {/if}
               <span class="stock" class:zero={p.stock !== null && p.stock <= 0} class:low={p.stock !== null && p.stock > 0 && p.stock <= lowLimit}>
                 {p.stock !== null ? `estoque ${p.stock}` : ''}
+                {#if outsideLabel(p.outside)}<span class="away">{outsideLabel(p.outside)}</span>{/if}
               </span>
               <span class="price">{fmt(p.price)}</span>
               <span class="qty" class:none={!q}>{q ?? ''}</span>
@@ -682,6 +684,7 @@
                   <span class="stock" class:zero={p.stock <= 0} class:low={p.stock > 0 && p.stock <= lowLimit}>estoque {p.stock}</span>
                 {/if}
               </span>
+              {#if outsideLabel(p.outside)}<span class="away" title="Peças com cliente: não estão na loja para vender">{outsideLabel(p.outside)}</span>{/if}
             {/snippet}
             {#if p.has_variants && p.variants?.length}
               <!-- Com grade: um tamanho/cor no card (o primeiro com estoque), que já
@@ -878,6 +881,7 @@
         <button class:out={v.stock <= 0} onclick={() => pickVariant(v)} autofocus={i === 0}>
           <strong>{v.label}</strong>
           <small>{v.stock > 0 ? `${v.stock} em estoque` : 'sem estoque'}</small>
+          {#if outsideLabel(v.outside)}<small class="away">{outsideLabel(v.outside)}</small>{/if}
           {#if i < 9}<kbd>{i + 1}</kbd>{/if}
         </button>
       {/each}
@@ -1022,6 +1026,8 @@
     {:else}
       <p><strong>{label}</strong> está sem estoque no sistema.</p>
     {/if}
+    {@const away = outsideLabel(shortage.variant ? shortage.variant.outside : shortage.product.outside)}
+    {#if away}<div class="alert away-box">Fora da loja: <strong>{away}</strong>. Confira em "Reservas e condicionais" antes de vender.</div>{/if}
     <p class="muted">Se a peça está na sua mão, pode vender: o estoque fica negativo e precisa ser acertado depois.</p>
     {#snippet footer()}
       <!-- svelte-ignore a11y_autofocus -->
@@ -1284,7 +1290,7 @@
   }
   .prow .stock {
     flex: none;
-    width: 74px;
+    width: 120px;
     text-align: right;
   }
   .prow .price {
@@ -1425,6 +1431,37 @@
   }
   .stock.zero {
     color: var(--danger);
+  }
+  /* Peças com cliente (reserva ou condicional): explicam o "sem estoque". */
+  .away {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #7c3aed;
+  }
+  .product .away {
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .away-box {
+    background: #f5f3ff;
+    color: #5b21b6;
+  }
+  .variants-inline button.has-away {
+    position: relative;
+  }
+  .variants-inline button.has-away::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    background: #8b5cf6;
   }
   .side {
     width: 420px;

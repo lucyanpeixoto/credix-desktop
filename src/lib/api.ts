@@ -109,6 +109,8 @@ export interface Product {
   sku: string | null
   price: number
   stock: number | null
+  /** Peças fora do estoque por reserva ou condicional em aberto (a peça existe, mas está com um cliente). */
+  outside?: Outside
   active: boolean
   /** Produto com grade: a venda precisa dizer qual tamanho/cor. */
   has_variants?: boolean
@@ -123,6 +125,23 @@ export interface ProductVariant {
   color: string | null
   label: string
   stock: number
+  outside?: Outside
+}
+
+export interface Outside {
+  reservation: number
+  consignment: number
+}
+
+/** "1 reservada · 2 em condicional", ou '' se não há nada fora da loja. */
+export function outsideLabel(o?: Outside | null): string {
+  if (!o) return ''
+  return [
+    o.reservation ? `${o.reservation} ${o.reservation === 1 ? 'reservada' : 'reservadas'}` : '',
+    o.consignment ? `${o.consignment} em condicional` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 export interface Customer {

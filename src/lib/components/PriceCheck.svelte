@@ -2,7 +2,7 @@
   // Consulta rápida (F10): lê a etiqueta ou digita o nome e vê preço e o
   // estoque de cada tamanho/cor, sem mexer no carrinho. "Tem no M?"
   import { tick } from 'svelte'
-  import { ApiError, type Product, type ProductVariant } from '../api'
+  import { ApiError, outsideLabel, type Product, type ProductVariant } from '../api'
   import { fmt } from '../money'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
@@ -148,6 +148,7 @@
             <button class:matched={v.id === matchedId} class={stockClass(v.stock)} onclick={() => onadd(product!, v)} title={v.code ?? ''}>
               <span>{v.label}</span>
               <strong>{Math.max(0, v.stock)}</strong>
+              {#if outsideLabel(v.outside)}<small class="away">{outsideLabel(v.outside)}</small>{/if}
             </button>
           {/each}
         </div>
@@ -158,12 +159,23 @@
           <button class="primary" onclick={() => onadd(product!, null)}>Pôr no carrinho</button>
         </div>
       {/if}
+      {#if outsideLabel(product.outside)}
+        <p class="away">Fora da loja: {outsideLabel(product.outside)}. Confira em "Reservas e condicionais".</p>
+      {/if}
     </div>
   {/if}
   </div>
 </Modal>
 
 <style>
+  /* Peças com cliente (reserva ou condicional). */
+  .away {
+    display: block;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: #7c3aed;
+  }
   .find {
     position: relative;
   }
