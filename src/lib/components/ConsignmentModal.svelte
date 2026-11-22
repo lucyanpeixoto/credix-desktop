@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import type { Consignment, ConsignmentItem, Customer } from '../api'
   import { Attempt } from '../attempt'
   import type { CartItem } from '../cart'
@@ -103,13 +103,57 @@
 
   function settle(c: Consignment) {
     settling = c
+    scan = ''
+    scanMsg = ''
+    focusScan()
     // Começa com tudo "ficou" (ou "vai levar"): a vendedora tira o resto.
     kept = Object.fromEntries(c.items.map((i) => [i.id, i.quantity]))
     error = ''
   }
 
-  function step(i: ConsignmentItem, delta: number) {
-    kept[i.id] = Math.max(0, Math.min(i.quantity, (kept[i.id] ?? 0) + delta))
+  /** Uma peça de cada linha do item: o cliente levou 2 iguais, aparecem 2 linhas. */
+  const settlePieces = $derived(
+    settling ? settling.items.flatMap((i) => Array.from({ length: i.quantity }, (_, n) => ({ item: i, n, back: n < i.quantity - (kept[i.id] ?? 0) }))) : [],
+  )
+  const backPieces = $derived(settlePieces.filter((p) => p.back).length)
+
+  function markBack(i: ConsignmentItem, back: boolean) {
+    kept[i.id] = Math.max(0, Math.min(i.quantity, (kept[i.id] ?? 0) + (back ? -1 : 1)))
+  }
+
+  // Leitura da peça que voltou: o código da etiqueta (variação ou SKU) abre a confirmação.
+  let scan = $state('')
+  let scanEl = $state<HTMLInputElement>()
+  let scanMsg = $state('')
+  let asking = $state<{ code: string; options: ConsignmentItem[] } | null>(null)
+
+  function focusScan() {
+    tick().then(() => scanEl?.focus())
+  }
+
+  function readScan(e: SubmitEvent) {
+    e.preventDefault()
+    const code = scan.trim().toUpperCase()
+    scan = ''
+    if (!code || !settling) return
+    const hit = settling.items.filter((i) => i.code?.toUpperCase() === code || i.sku?.toUpperCase() === code)
+    if (!hit.length) {
+      scanMsg = `Nenhuma peça com o código “${code}” ${settling.kind === 'reservation' ? 'nesta reserva' : 'neste condicional'}.`
+      return
+    }
+    const open = hit.filter((i) => (kept[i.id] ?? 0) > 0)
+    if (!open.length) {
+      scanMsg = `As peças com o código “${code}” já estão marcadas como devolvidas.`
+      return
+    }
+    scanMsg = ''
+    asking = { code, options: open }
+  }
+
+  function confirmBack(i: ConsignmentItem) {
+    markBack(i, true)
+    asking = null
+    focusScan()
   }
 
   async function returnAll() {
@@ -172,38 +216,36 @@
     <p class="muted">
       {#if res}
         Reservado em {fmtDate(settling.created_at)}{settling.seller ? ` por ${settling.seller}` : ''} · guardar até {fmtDate(settling.due_date)}.
-        Marque quantas peças <strong>o cliente vai levar</strong>; o resto volta ao estoque.
+        Leia o código ou clique em <strong>Não vai levar</strong> nas peças que ele desistiu; elas voltam ao estoque.
       {:else}
         Saiu em {fmtDate(settling.created_at)}{settling.seller ? ` com ${settling.seller}` : ''} · devolver até {fmtDate(settling.due_date)}.
-        Marque quantas peças <strong>ficaram com o cliente</strong>; o resto volta ao estoque.
+        Leia o código de cada peça que voltou, ou clique em <strong>Não ficou</strong>; elas voltam ao estoque.
       {/if}
     </p>
+    <!-- Chegaram as peças: bipe cada uma que voltou e confirme. -->
+    <form class="scan" onsubmit={readScan}>
+      <Icon name="search" size={18} />
+      <!-- svelte-ignore a11y_autofocus -->
+      <input bind:this={scanEl} bind:value={scan} autofocus autocomplete="off" placeholder="Leia o código da peça que voltou" />
+    </form>
+    {#if scanMsg}<div class="alert warn">{scanMsg}</div>{/if}
     <div class="rows">
-      {#each settling.items as i (i.id)}
-        <div class="line" class:back={(kept[i.id] ?? 0) === 0}>
+      {#each settlePieces as p (`${p.item.id}-${p.n}`)}
+        <div class="line" class:back={p.back}>
           <span class="what">
-            <strong>{i.name}</strong>
-            <small>{i.variant_label ? `${i.variant_label} · ` : ''}{fmt(i.unit_price)} un. · {res ? 'reservou' : 'levou'} {i.quantity}</small>
+            <strong>{p.item.name}</strong>
+            <small>{p.item.variant_label ? `${p.item.variant_label} · ` : ''}{fmt(p.item.unit_price)}{p.item.code ? ` · ${p.item.code}` : ''}</small>
           </span>
-          <span class="state"
-            >{(kept[i.id] ?? 0) === 0
-              ? res
-                ? 'desistiu'
-                : 'devolveu'
-              : (kept[i.id] ?? 0) === i.quantity
-                ? res
-                  ? 'vai levar'
-                  : 'ficou'
-                : `${res ? 'leva' : 'ficou'} ${kept[i.id]} de ${i.quantity}`}</span
-          >
-          <div class="stepper">
-            <button onclick={() => step(i, -1)} disabled={(kept[i.id] ?? 0) <= 0} aria-label="Uma a menos"><Icon name="minus" size={16} /></button>
-            <span>{kept[i.id] ?? 0}</span>
-            <button onclick={() => step(i, 1)} disabled={(kept[i.id] ?? 0) >= i.quantity} aria-label="Uma a mais"><Icon name="plus" size={16} /></button>
-          </div>
+          {#if p.back}
+            <span class="state">{res ? 'desistiu' : 'voltou'}</span>
+            <button class="ghost link" onclick={() => markBack(p.item, false)}>Desfazer</button>
+          {:else}
+            <button class="notkept" onclick={() => markBack(p.item, true)}>{res ? 'Não vai levar' : 'Não ficou'}</button>
+          {/if}
         </div>
       {/each}
     </div>
+    <p class="sum">{res ? 'Vai levar' : 'Ficou com'} {keptPieces} de {settlePieces.length} {settlePieces.length === 1 ? 'peça' : 'peças'}{backPieces ? ` · ${backPieces} ${res ? 'desistiu' : 'voltaram'}` : ''}</p>
     <div class="row">
       <button class="ghost link" onclick={() => settling && (kept = Object.fromEntries(settling.items.map((i) => [i.id, 0])))}>{res ? 'Desistiu de tudo' : 'Devolveu tudo'}</button>
       <button class="ghost link" onclick={() => settling && (kept = Object.fromEntries(settling.items.map((i) => [i.id, i.quantity])))}>{res ? 'Vai levar tudo' : 'Ficou com tudo'}</button>
@@ -298,6 +340,46 @@
   {#if error}<div class="alert danger">{error}</div>{/if}
 </Modal>
 
+{#if asking && settling}
+  {@const res = settling.kind === 'reservation'}
+  <Modal
+    title={asking.options.length > 1 ? 'Qual peça voltou?' : res ? 'Ele desistiu desta peça?' : 'O cliente não ficou com esta peça?'}
+    onclose={() => {
+      asking = null
+      focusScan()
+    }}
+    width="440px"
+  >
+    {#if asking.options.length > 1}
+      <p class="muted">O código {asking.code} é de mais de um tamanho/cor. Escolha a peça que voltou:</p>
+    {/if}
+    <div class="rows">
+      {#each asking.options as i, n (i.id)}
+        <!-- svelte-ignore a11y_autofocus -->
+        <button class="line pickable" autofocus={n === 0} onclick={() => confirmBack(i)}>
+          <span class="what">
+            <strong>{i.name}</strong>
+            <small>{i.variant_label ? `${i.variant_label} · ` : ''}{fmt(i.unit_price)}</small>
+          </span>
+          <span class="state">{asking.options.length > 1 ? 'esta' : res ? 'desistiu' : 'voltou'}</span>
+        </button>
+      {/each}
+    </div>
+    {#snippet footer()}
+      <button
+        onclick={() => {
+          asking = null
+          focusScan()
+        }}>Cancelar <kbd>Esc</kbd></button
+      >
+      <span class="spacer"></span>
+      {#if asking && asking.options.length === 1}
+        <button class="primary" onclick={() => asking && confirmBack(asking.options[0])}>Confirmar devolução <kbd>Enter</kbd></button>
+      {/if}
+    {/snippet}
+  </Modal>
+{/if}
+
 {#if picking}
   <CustomerPicker
     onclose={() => (picking = false)}
@@ -368,6 +450,35 @@
   .what em.res {
     background: var(--brand-50, #eef2ff);
     color: var(--brand);
+  }
+  .scan {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 0 14px;
+    height: 48px;
+    border: 2px solid var(--brand);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--muted);
+  }
+  .scan input {
+    flex: 1;
+    height: 100%;
+    border: 0;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 600;
+    background: transparent;
+    outline: none;
+    box-shadow: none;
+  }
+  .notkept {
+    flex: none;
+    height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
   }
   .rows {
     display: grid;
@@ -475,32 +586,6 @@
   .pick .muted {
     margin-left: auto;
     font-size: 12px;
-  }
-  .stepper {
-    flex: none;
-    display: flex;
-    align-items: center;
-    border-radius: 12px;
-    background: var(--soft);
-    padding: 2px;
-  }
-  .stepper button {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: 0;
-    border-radius: 9px;
-    background: transparent;
-    color: #475569;
-  }
-  .stepper button:hover:not(:disabled) {
-    background: #fff;
-  }
-  .stepper span {
-    min-width: 28px;
-    text-align: center;
-    font-size: 14px;
-    font-weight: 800;
   }
   .empty {
     padding: 28px 0;

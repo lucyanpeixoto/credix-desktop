@@ -171,6 +171,8 @@ export interface ConsignmentItem {
   product_variant_id: string | null
   name: string
   sku: string | null
+  /** Código da etiqueta: o da variação (000023-2) ou o SKU. */
+  code?: string | null
   variant_label: string | null
   quantity: number
   /** Preço de hoje: é o que a venda vai cobrar. */
