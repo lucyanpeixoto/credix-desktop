@@ -1531,14 +1531,17 @@
     color: var(--warn);
     background: var(--warn-bg);
   }
+  /* A margem negativa compensa o respiro: o texto segue alinhado com os botões de cima. */
   .minor {
     display: flex;
     align-items: center;
     gap: 2px;
     min-width: 0;
+    margin: 0 -10px;
   }
   .minor button {
-    padding: 0 6px;
+    margin: 0;
+    padding: 0 10px;
     white-space: nowrap;
   }
   .lookup {
@@ -1683,9 +1686,11 @@
   .sub .num.green {
     color: var(--ok);
   }
+  /* Respiro para o fundo do hover não colar no texto, sem tirar o texto do lugar. */
   .link {
     height: auto;
-    padding: 0;
+    padding: 4px 8px;
+    margin: -4px -8px;
     gap: 6px;
     color: var(--muted);
     font-size: 13px;
@@ -1700,6 +1705,9 @@
     font-size: 14px;
     font-weight: 700;
     color: #475569;
+  }
+  .grand .link {
+    margin-left: 0;
   }
   .grand strong {
     font-size: 40px;
