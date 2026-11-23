@@ -40,6 +40,7 @@ jobs:
 
       - run: npm ci
       - run: npm run check
+      - run: npm test
 
       # Com tag v*: publica a versão no repo público credix-desktop-releases (o código
       # aqui continua privado). O app instalado lê o latest.json de lá para se

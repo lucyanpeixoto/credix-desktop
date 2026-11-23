@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import type { Consignment, ConsignmentItem, Customer } from '../api'
   import { Attempt } from '../attempt'
+  import { matchScan, piecesOf } from '../consignment'
   import type { CartItem } from '../cart'
   import { fmt, fmtDate, todayIso } from '../money'
   import { printConsignment, type PrintResult } from '../print'
@@ -113,9 +114,7 @@
   }
 
   /** Uma peça de cada linha do item: o cliente levou 2 iguais, aparecem 2 linhas. */
-  const settlePieces = $derived(
-    settling ? settling.items.flatMap((i) => Array.from({ length: i.quantity }, (_, n) => ({ item: i, n, back: n < i.quantity - (kept[i.id] ?? 0) }))) : [],
-  )
+  const settlePieces = $derived(settling ? piecesOf(settling.items, kept) : [])
   const backPieces = $derived(settlePieces.filter((p) => p.back).length)
 
   function markBack(i: ConsignmentItem, back: boolean) {
@@ -137,18 +136,17 @@
     const code = scan.trim().toUpperCase()
     scan = ''
     if (!code || !settling) return
-    const hit = settling.items.filter((i) => i.code?.toUpperCase() === code || i.sku?.toUpperCase() === code)
-    if (!hit.length) {
+    const found = matchScan(settling.items, kept, code)
+    if (found.kind === 'none') {
       scanMsg = `Nenhuma peça com o código “${code}” ${settling.kind === 'reservation' ? 'nesta reserva' : 'neste condicional'}.`
       return
     }
-    const open = hit.filter((i) => (kept[i.id] ?? 0) > 0)
-    if (!open.length) {
+    if (found.kind === 'all-back') {
       scanMsg = `As peças com o código “${code}” já estão marcadas como devolvidas.`
       return
     }
     scanMsg = ''
-    asking = { code, options: open }
+    asking = { code, options: found.options }
   }
 
   function confirmBack(i: ConsignmentItem) {
