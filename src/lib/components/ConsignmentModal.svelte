@@ -4,6 +4,7 @@
   import { Attempt } from '../attempt'
   import type { CartItem } from '../cart'
   import { fmt, fmtDate, todayIso } from '../money'
+  import { printConsignment, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
   import CustomerPicker from './CustomerPicker.svelte'
@@ -173,6 +174,12 @@
     }
   }
 
+  let printed = $state<PrintResult | null>(null)
+  async function reprint(c: Consignment) {
+    printed = null
+    printed = await printConsignment(c)
+  }
+
   function charge() {
     if (!settling) return
     const c = settling
@@ -186,6 +193,7 @@
 {#snippet footer()}
   {#if settling}
     <button onclick={() => (settling = null)}>Voltar</button>
+    <button class="ghost" onclick={() => settling && reprint(settling)}><Icon name="printer" size={16} /> Comprovante</button>
     <span class="spacer"></span>
     {#if keptPieces === 0}
       <button class="primary" disabled={saving} onclick={returnAll}
@@ -229,6 +237,7 @@
       <input bind:this={scanEl} bind:value={scan} autofocus autocomplete="off" placeholder="Leia o código da peça que voltou" />
     </form>
     {#if scanMsg}<div class="alert warn">{scanMsg}</div>{/if}
+    {#if printed}<div class="alert" class:ok={printed.ok}>{printed.ok ? (printed.message ?? 'Comprovante impresso.') : `Não imprimiu: ${printed.message}`}</div>{/if}
     <div class="rows">
       {#each settlePieces as p (`${p.item.id}-${p.n}`)}
         <div class="line" class:back={p.back}>
@@ -321,6 +330,7 @@
     {:else}
       <div class="rows">
         {#each list as c (c.id)}
+          <div class="pick-row">
           <button class="line pickable" onclick={() => settle(c)}>
             <span class="what">
               <strong>#{c.code} · {c.customer?.name ?? 'Cliente'} <em class:res={c.kind === 'reservation'}>{c.kind === 'reservation' ? 'Reserva' : 'Condicional'}</em></strong>
@@ -332,9 +342,12 @@
             </span>
             <strong class="num">{fmt(c.total)}</strong>
           </button>
+          <button class="ghost print" title="Imprimir o comprovante" aria-label="Imprimir o comprovante" onclick={() => reprint(c)}><Icon name="printer" size={16} /></button>
+          </div>
         {/each}
       </div>
       <p class="muted">Clique no cliente que voltou para marcar o que ele leva e o que volta ao estoque.</p>
+      {#if printed}<div class="alert" class:ok={printed.ok}>{printed.ok ? (printed.message ?? 'Comprovante impresso.') : `Não imprimiu: ${printed.message}`}</div>{/if}
     {/if}
   {/if}
   {#if error}<div class="alert danger">{error}</div>{/if}
@@ -450,6 +463,21 @@
   .what em.res {
     background: var(--brand-50, #eef2ff);
     color: var(--brand);
+  }
+  .pick-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .pick-row .pickable {
+    flex: 1;
+    min-width: 0;
+  }
+  .pick-row .print {
+    flex: none;
+    width: 42px;
+    height: auto;
+    padding: 0;
   }
   .scan {
     display: flex;

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { CashMovement, CashSession, Receipt, Sale } from './api'
+import type { CashMovement, CashSession, Consignment, Receipt, Sale } from './api'
 import { cashDueOf } from './cart'
 import { Ticket } from './escpos'
 import { fmt, fmtDate, PAYMENT_LABELS } from './money'
@@ -172,5 +172,34 @@ export function movementTicket(
   t.bold(true).pair('Valor', fmt(m.amount)).bold(false)
   if (m.reason) t.wrap(`Motivo: ${m.reason}`)
   t.feed(2).line('_'.repeat(Math.min(32, s.paperColumns))).line(m.user ?? 'Assinatura')
+  return t.cut().build()
+}
+
+/** Comprovante do condicional ou da reserva: as peças que saíram, o prazo e a assinatura. */
+export function consignmentTicket(s: Settings, c: Consignment, store: StoreInfo): number[] {
+  const t = new Ticket(s.paperColumns)
+  const res = c.kind === 'reservation'
+  header(t, store, `${res ? 'RESERVA' : 'CONDICIONAL'} #${c.code}`)
+  t.line(new Date(c.created_at).toLocaleString('pt-BR'))
+  if (c.customer) t.line(`Cliente: ${c.customer.name}`)
+  if (c.customer?.phone_formatted) t.line(`Telefone: ${c.customer.phone_formatted}`)
+  if (c.seller) t.line(`Vendedor: ${c.seller}`)
+  t.bold(true).line(`${res ? 'Guardar até' : 'Devolver até'}: ${fmtDate(c.due_date)}`).bold(false).rule()
+  for (const it of c.items) {
+    t.wrap(`${it.name}${it.variant_label ? ` - ${it.variant_label}` : ''}`)
+    t.pair(`  ${it.quantity} x ${fmt(it.unit_price)}${it.code ? `  ${it.code}` : ''}`, fmt(it.quantity * it.unit_price))
+  }
+  t.rule()
+  t.pair('Peças', String(c.pieces))
+  t.bold(true).pair('VALOR', fmt(c.total)).bold(false)
+  t.rule()
+  t.wrap(
+    res
+      ? `As peças acima ficam separadas na loja até ${fmtDate(c.due_date)}. Depois dessa data, voltam para a venda.`
+      : `Levei as peças acima para provar e devolvo até ${fmtDate(c.due_date)} as que não ficar, em perfeito estado e com as etiquetas. As que ficarem serão cobradas.`,
+  )
+  if (c.notes) t.wrap(`Obs.: ${c.notes}`)
+  t.feed(3).line('_'.repeat(Math.min(32, s.paperColumns))).line(c.customer?.name ?? 'Assinatura do cliente')
+  t.align('center').line('Documento sem valor fiscal').align('left')
   return t.cut().build()
 }

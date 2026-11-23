@@ -11,7 +11,7 @@
   import PriceCheck from '../components/PriceCheck.svelte'
   import { heldBody, loadHeld, saveHeld, type HeldSale } from '../held'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
-  import { canPrintCarne, canPrintReceipt, kickDrawer, printCarne, printSale, type PrintResult } from '../print'
+  import { canPrintCarne, canPrintReceipt, kickDrawer, printCarne, printConsignment, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
   import Icon from '../ui/Icon.svelte'
 
@@ -53,7 +53,7 @@
   let seq = 0
 
   // Modais
-  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'nostock' | 'held' | 'lookup' | 'exchange' | 'consignment'>('')
+  let modal = $state<'' | 'customer' | 'custom' | 'variant' | 'discount' | 'total' | 'checkout' | 'done' | 'clear' | 'nostock' | 'held' | 'lookup' | 'exchange' | 'consignment' | 'consigned'>('')
   let picking = $state<{ product: Product; quantity: number } | null>(null)
 
   function pickVariant(v: ProductVariant) {
@@ -376,15 +376,21 @@
     modal = 'consignment'
   }
 
+  /** Acabou de abrir: oferece o comprovante para a cliente assinar. */
+  let consigned = $state<Consignment | null>(null)
+  let consignedPrint = $state<PrintResult | null>(null)
+
   function consignmentCreated(c: Consignment) {
-    modal = ''
     reset()
     loadConsignmentCount()
     loadProducts()
-    const who = c.customer?.name.split(' ')[0] ?? 'o cliente'
-    const n = `${c.pieces} ${c.pieces === 1 ? 'peça' : 'peças'}`
-    say('ok', c.kind === 'reservation' ? `Reserva #${c.code}: ${n} para ${who}` : `Condicional #${c.code}: ${n} com ${who}`)
-    focusSearch()
+    consigned = c
+    consignedPrint = null
+    modal = 'consigned'
+  }
+
+  async function printConsigned() {
+    if (consigned) consignedPrint = await printConsignment(consigned)
   }
 
   /** O cliente voltou: as peças que ficaram vão para o carrinho; a venda encerra o condicional. */
@@ -1012,6 +1018,38 @@
       focusSearch()
     }}
   />
+{:else if modal === 'consigned' && consigned}
+  {@const res = consigned.kind === 'reservation'}
+  <Modal
+    title={`${res ? 'Reserva' : 'Condicional'} #${consigned.code} aberto`}
+    onclose={() => {
+      modal = ''
+      consigned = null
+      focusSearch()
+    }}
+    width="440px"
+  >
+    <p>
+      <strong>{consigned.pieces} {consigned.pieces === 1 ? 'peça' : 'peças'}</strong> {consigned.pieces === 1 ? 'saiu' : 'saíram'} do estoque {res ? 'e ficam separadas para' : 'com'}
+      <strong>{consigned.customer?.name ?? 'o cliente'}</strong>, {res ? 'até' : 'para devolver até'} {fmtDate(consigned.due_date)}.
+    </p>
+    <p class="muted">Imprima o comprovante para a cliente assinar.</p>
+    {#if consignedPrint}
+      <div class="alert" class:ok={consignedPrint.ok}>{consignedPrint.ok ? (consignedPrint.message ?? 'Comprovante impresso.') : `Não imprimiu: ${consignedPrint.message}`}</div>
+    {/if}
+    {#snippet footer()}
+      <button
+        onclick={() => {
+          modal = ''
+          consigned = null
+          focusSearch()
+        }}>Fechar <kbd>Esc</kbd></button
+      >
+      <span class="spacer"></span>
+      <!-- svelte-ignore a11y_autofocus -->
+      <button class="primary" autofocus onclick={printConsigned}>Imprimir comprovante <kbd>Enter</kbd></button>
+    {/snippet}
+  </Modal>
 {:else if modal === 'consignment'}
   <ConsignmentModal
     start={consignmentStart}

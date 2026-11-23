@@ -195,6 +195,8 @@ export interface Consignment {
   pieces: number
   total: number
   items: ConsignmentItem[]
+  /** Comprovante em meia folha A4 (link assinado). */
+  half_sheet_url?: string
 }
 
 /** Mesmos campos do cadastro de cliente do Credix web. */
