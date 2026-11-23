@@ -1,6 +1,7 @@
 // Vendas em espera: o carrinho sai do caixa (cliente no provador) e volta
-// depois. Ficam gravadas no próprio computador e sobrevivem a fechar o app.
-// Nada vai para o servidor: o estoque só baixa quando a venda é finalizada.
+// depois. Ficam no servidor (valem para todos os caixas da loja e para o
+// painel); sem conexão, ficam neste computador até a próxima vez que der
+// para enviar. O estoque só baixa quando a venda é finalizada.
 
 import type { Customer } from './api'
 import type { CartItem } from './cart'
@@ -16,11 +17,27 @@ export interface HeldSale {
   discount: number
   /** Venda das peças que ficaram de um condicional (encerra ele ao finalizar). */
   consignment?: { id: string; code: number; kind?: 'consignment' | 'reservation' } | null
+  /** Guardada só neste computador (sem conexão na hora); sobe quando der. */
+  local?: boolean
+}
+
+/** O corpo que o servidor guarda (POST /pdv/held-sales). */
+export function heldBody(h: HeldSale) {
+  return {
+    customer_id: h.customer?.id ?? null,
+    discount: h.discount,
+    consignment_id: h.consignment?.id ?? null,
+    items: h.items.map((i) => ({
+      product_id: i.product_id,
+      variant_id: i.variant_id ?? null,
+      name: i.name,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+    })),
+  }
 }
 
 const KEY = 'credix-desktop.held-sales'
-/** Um limite para a lista não virar depósito de carrinhos esquecidos. */
-export const MAX_HELD = 10
 
 export function loadHeld(): HeldSale[] {
   try {

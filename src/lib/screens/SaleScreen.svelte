@@ -9,7 +9,7 @@
   import { modalStack } from '../components/modalStack'
   import ExchangeModal from '../components/ExchangeModal.svelte'
   import PriceCheck from '../components/PriceCheck.svelte'
-  import { loadHeld, MAX_HELD, saveHeld, type HeldSale } from '../held'
+  import { heldBody, loadHeld, saveHeld, type HeldSale } from '../held'
   import { fmt, fmtDate, PAYMENT_LABELS, parseMoney, round2, toInput } from '../money'
   import { canPrintCarne, canPrintReceipt, kickDrawer, printCarne, printSale, type PrintResult } from '../print'
   import { session } from '../session.svelte'
@@ -412,33 +412,89 @@
   }
 
   // ── Vendas em espera ─────────────────────────────────────────
-  let held = $state<HeldSale[]>(loadHeld())
+  // No servidor (todos os caixas e o painel veem); sem conexão, ficam neste
+  // computador (local) e sobem na próxima vez que a lista for atualizada.
+  let held = $state<HeldSale[]>(loadHeld().map((h) => ({ ...h, local: true })))
+  let heldSync: Promise<void> | null = null
+
+  /** Sobe as que ficaram só neste computador e traz a lista da loja. */
+  function refreshHeld(): Promise<void> {
+    heldSync ??= (async () => {
+      let pending = loadHeld()
+      for (const h of [...pending]) {
+        try {
+          await session.api.holdSale(heldBody(h), `held-${h.id}`)
+          pending = pending.filter((x) => x.id !== h.id)
+          saveHeld(pending)
+        } catch {
+          break
+        }
+      }
+      const local = pending.map((h) => ({ ...h, local: true }))
+      try {
+        held = [...(await session.api.heldSales()).data, ...local]
+      } catch {
+        held = [...held.filter((h) => !h.local), ...local]
+      }
+    })().finally(() => (heldSync = null))
+    return heldSync
+  }
+  onMount(() => {
+    refreshHeld()
+    // Outro caixa (ou o painel) pode pôr ou retomar uma venda: confere de vez em quando.
+    const timer = setInterval(refreshHeld, 60_000)
+    const onFocus = () => refreshHeld()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
+  })
 
   /** Tira o carrinho do caixa e guarda; o caixa fica livre para o próximo. */
   function holdSale(): boolean {
     if (!items.length) return false
-    if (held.length >= MAX_HELD) {
-      say('error', `Já há ${MAX_HELD} vendas em espera. Retome ou descarte uma.`)
-      return false
+    const h: HeldSale = {
+      id: newKey(),
+      at: new Date().toISOString(),
+      seller: session.seller?.name ?? null,
+      customer,
+      items: $state.snapshot(items),
+      discount,
+      consignment: charging,
+      local: true,
     }
-    held = [
-      { id: newKey(), at: new Date().toISOString(), seller: session.seller?.name ?? null, customer, items: $state.snapshot(items), discount, consignment: charging },
-      ...held,
-    ]
-    saveHeld(held)
+    // Aparece na hora; a cópia do servidor entra no lugar quando ele responder.
+    held = [...held, h]
     say('ok', `Venda em espera${customer ? ` (${customer.name})` : ''}`)
     reset()
     focusSearch()
+    session.api
+      .holdSale(heldBody(h), `held-${h.id}`)
+      .then((saved) => (held = held.map((x) => (x.id === h.id ? saved : x))))
+      .catch((e) => {
+        if (e instanceof ApiError && e.status !== 0) {
+          held = held.filter((x) => x.id !== h.id)
+          items = h.items
+          customer = h.customer
+          discount = h.discount
+          charging = h.consignment ?? null
+          say('error', e.message)
+          return
+        }
+        saveHeld([...loadHeld(), { ...h, local: undefined }])
+        say('error', 'Sem conexão: a venda ficou guardada só neste computador e sobe quando a internet voltar.')
+      })
     return true
   }
 
   /** Volta a venda ao caixa; a que estava aberta vai para a espera no lugar. */
   function resumeHeld(h: HeldSale) {
-    // Sai da lista antes: com a lista cheia, a aberta ainda cabe no lugar dela.
     held = held.filter((x) => x.id !== h.id)
-    saveHeld(held)
+    if (h.local) saveHeld(loadHeld().filter((x) => x.id !== h.id))
+    else session.api.dropHeldSale(h.id).catch(() => say('error', 'Não deu para tirar a venda da espera no servidor: confira a lista depois.'))
     holdSale()
-    items = h.items
+    items = h.items.map((i) => ({ ...i, key: newKey() }))
     customer = h.customer
     discount = Math.min(h.discount, subtotalOf(h.items))
     charging = h.consignment ?? null
@@ -449,11 +505,17 @@
 
   function dropHeld(h: HeldSale) {
     held = held.filter((x) => x.id !== h.id)
-    saveHeld(held)
+    if (h.local) saveHeld(loadHeld().filter((x) => x.id !== h.id))
+    else session.api.dropHeldSale(h.id).catch(() => refreshHeld())
     if (!held.length) {
       modal = ''
       focusSearch()
     }
+  }
+
+  function openHeld() {
+    modal = 'held'
+    refreshHeld()
   }
 
   const heldTotal = (h: HeldSale) => round2(Math.max(0, subtotalOf(h.items) - h.discount))
@@ -575,7 +637,7 @@
       // Ctrl+E: com carrinho, põe em espera; vazio, abre a lista para retomar.
       e.preventDefault()
       if (items.length) holdSale()
-      else if (held.length) modal = 'held'
+      else if (held.length) openHeld()
     } else if (e.key === 'Delete' && e.ctrlKey && items.length) {
       e.preventDefault()
       modal = 'clear'
@@ -831,7 +893,7 @@
     <button class="ghost" onclick={() => (modal = 'lookup')}><Icon name="search" size={15} /> Consultar preço <kbd>F10</kbd></button>
     <button class="ghost" onclick={() => (modal = 'exchange')}>Troca <kbd>Ctrl+T</kbd></button>
     <span class="spacer"></span>
-    <button class="ghost" class:held-on={held.length > 0} disabled={!held.length} onclick={() => (modal = 'held')} title="Vendas guardadas neste computador: retomar"
+    <button class="ghost" class:held-on={held.length > 0} disabled={!held.length} onclick={openHeld} title="Vendas em espera da loja: retomar"
       >Em espera{#if held.length}<b>{held.length}</b>{/if}</button
     >
     <button class="ghost" class:held-on={consignmentCount > 0} onclick={() => openConsignment('open')} title="Peças reservadas ou que o cliente levou para provar: acertar"
@@ -986,7 +1048,7 @@
             <span class="held-who">
               <strong>{h.customer?.name ?? 'Consumidor'}</strong>
               <small>{heldCount(h)} {heldCount(h) === 1 ? 'peça' : 'peças'} · {h.items.map((i) => i.name).slice(0, 2).join(', ')}{h.items.length > 2 ? '…' : ''}</small>
-              <small>{heldTime(h.at)}{h.seller ? ` · ${h.seller}` : ''}</small>
+              <small>{heldTime(h.at)}{h.seller ? ` · ${h.seller}` : ''}{h.local ? ' · só neste computador' : ''}</small>
             </span>
             <strong class="num">{fmt(heldTotal(h))}</strong>
           </button>
@@ -994,7 +1056,7 @@
         </div>
       {/each}
     </div>
-    <p class="muted">O estoque só baixa quando a venda é finalizada. As vendas em espera ficam neste computador.</p>
+    <p class="muted">O estoque só baixa quando a venda é finalizada. As vendas em espera valem para todos os caixas da loja e para o painel.</p>
   </Modal>
 {:else if modal === 'clear'}
   <Modal title="Cancelar venda?" onclose={() => (modal = '')} width="400px">
