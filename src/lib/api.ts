@@ -1,6 +1,7 @@
 // Cliente da API do Credix (Laravel + Sanctum).
 
 import type { CarneData } from './carne'
+import type { HeldSale } from './held'
 
 export interface Company {
   id: string
@@ -194,6 +195,8 @@ export interface Consignment {
   pieces: number
   total: number
   items: ConsignmentItem[]
+  /** Comprovante em meia folha A4 (link assinado). */
+  half_sheet_url?: string
 }
 
 /** Mesmos campos do cadastro de cliente do Credix web. */
@@ -546,6 +549,17 @@ export class Api {
   }
 
   // Condicional: as peças saem do estoque até o cliente voltar.
+  // Vendas em espera (no servidor: valem para todos os caixas e para o painel)
+  heldSales() {
+    return this.request<{ data: HeldSale[] }>('GET', 'held-sales')
+  }
+  holdSale(body: Record<string, unknown>, key?: string) {
+    return this.request<HeldSale>('POST', 'held-sales', { body, key })
+  }
+  dropHeldSale(id: string) {
+    return this.request<{ ok: boolean }>('DELETE', `held-sales/${id}`)
+  }
+
   consignments() {
     return this.request<{ data: Consignment[] }>('GET', 'consignments')
   }

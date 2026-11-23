@@ -1,9 +1,10 @@
 // Impressão com as configurações do terminal; nunca derruba a venda se falhar.
-import type { CashMovement, CashSession, Receipt, Sale } from './api'
+import type { CashMovement, CashSession, Consignment, Receipt, Sale } from './api'
 import { carneBytes, carneTestBytes, type CarneAdjust } from './carne'
 import { Ticket } from './escpos'
 import {
   cashCloseTicket,
+  consignmentTicket,
   movementTicket,
   openInBrowser,
   printerReady,
@@ -65,6 +66,19 @@ export async function printReceipt(r: Receipt, customer: string, drawer = false)
   if (!printerReady(s)) return { ok: false, message: 'Nenhuma impressora configurada.' }
   try {
     await sendToPrinter(s, receiptTicket(s, r, { ...base(), customer }, drawer && s.openDrawer))
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, message: String((e as Error)?.message ?? e) }
+  }
+}
+
+/** Comprovante do condicional ou da reserva, para a cliente assinar. */
+export async function printConsignment(c: Consignment): Promise<PrintResult> {
+  const s = session.settings
+  if (halfSheet()) return openHalfSheet(c.half_sheet_url, 'O comprovante do condicional')
+  if (!printerReady(s)) return { ok: false, message: 'Nenhuma impressora configurada.' }
+  try {
+    await sendToPrinter(s, consignmentTicket(s, c, base()))
     return { ok: true }
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message ?? e) }
